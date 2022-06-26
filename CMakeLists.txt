@@ -69,19 +69,19 @@ if (APPLE)
 			${APPKIT})
 endif()
 
-if(BROWSER_PANEL_SUPPORT_ENABLED OR USE_QT_LOOP)
-	if(DEFINED QTDIR${_lib_suffix})
-		list(APPEND CMAKE_PREFIX_PATH "${QTDIR${_lib_suffix}}")
-	elseif(DEFINED QTDIR)
-		list(APPEND CMAKE_PREFIX_PATH "${QTDIR}")
-	elseif(DEFINED ENV{QTDIR${_lib_suffix}})
-		list(APPEND CMAKE_PREFIX_PATH "$ENV{QTDIR${_lib_suffix}}")
-	elseif(DEFINED ENV{QTDIR})
-		list(APPEND CMAKE_PREFIX_PATH "$ENV{QTDIR}")
-	endif()
+if(DEFINED QTDIR${_lib_suffix})
+	list(APPEND CMAKE_PREFIX_PATH "${QTDIR${_lib_suffix}}")
+elseif(DEFINED QTDIR)
+	list(APPEND CMAKE_PREFIX_PATH "${QTDIR}")
+elseif(DEFINED ENV{QTDIR${_lib_suffix}})
+	list(APPEND CMAKE_PREFIX_PATH "$ENV{QTDIR${_lib_suffix}}")
+elseif(DEFINED ENV{QTDIR})
+	list(APPEND CMAKE_PREFIX_PATH "$ENV{QTDIR}")
+endif()
+find_package(Qt5Widgets REQUIRED)
 
+if(BROWSER_PANEL_SUPPORT_ENABLED OR USE_QT_LOOP)
 	set(CMAKE_AUTOMOC TRUE)
-	find_package(Qt5Widgets REQUIRED)
 	list(APPEND obs-browser_LIBRARIES
 		Qt5::Widgets
 		)
@@ -232,7 +232,11 @@ if (APPLE AND NOT BROWSER_LEGACY)
     	add_executable(${_helper_target} MACOSX_BUNDLE
     		${obs-browser-page_SOURCES}
     		${obs-browser-page_HEADERS})
-    	target_link_libraries(${_helper_target} ${CEF_LIBRARIES})
+    	target_link_libraries(${_helper_target}
+			${CEF_LIBRARIES}
+			libobs
+			Qt5::Widgets
+			)
     	set_target_properties(${_helper_target} PROPERTIES
     		MACOSX_BUNDLE_INFO_PLIST ${_helper_info_plist}
     		OUTPUT_NAME ${_helper_output_name}
@@ -271,6 +275,8 @@ else()
     	)
     target_link_libraries(obs-browser-page
     	${CEF_LIBRARIES}
+    	libobs
+    	Qt5::Widgets
     	)
     set_target_properties(obs-browser-page PROPERTIES FOLDER "plugins/obs-browser")
     if(APPLE)
