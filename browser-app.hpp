@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <functional>
 #include "cef-headers.hpp"
+#include <thread>
 
 typedef std::function<void(CefRefPtr<CefBrowser>)> BrowserFunc;
 
@@ -78,11 +79,28 @@ class BrowserApp : public CefApp,
 	CallbackMap callbackMap;
 	int callbackId;
 
+	typedef std::map<
+		std::pair<std::string, int>,
+		std::pair<CefRefPtr<CefV8Context>, CefRefPtr<CefV8Value> >
+		>
+		CSSCallbackMap;
+
+	CSSCallbackMap cssCallbackMap;
+	bool cssWatcherActive = false;
+	std::thread *cssWatcherThread = nullptr;
+	CefRefPtr<CefTaskRunner> taskRunner = nullptr;
+	void WatchCSS();
+	void SendCSSChanged(std::string id);
+
 public:
 	inline BrowserApp(bool shared_texture_available_ = false)
 		: shared_texture_available(shared_texture_available_)
 	{
 	}
+	~BrowserApp();
+
+	static std::string GetConfigPath(std::string relpath = "");
+	static std::string GetCSS(std::string id);
 
 	virtual CefRefPtr<CefRenderProcessHandler>
 	GetRenderProcessHandler() override;
@@ -98,6 +116,10 @@ public:
 	virtual void OnContextCreated(CefRefPtr<CefBrowser> browser,
 				      CefRefPtr<CefFrame> frame,
 				      CefRefPtr<CefV8Context> context) override;
+	virtual void OnContextReleased(
+		CefRefPtr<CefBrowser> browser,
+		CefRefPtr<CefFrame> frame,
+		CefRefPtr<CefV8Context> context) override;
 	virtual bool
 	OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
 				 CefRefPtr<CefFrame> frame,

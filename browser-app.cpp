@@ -20,6 +20,14 @@
 #include "browser-version.h"
 #include <json11/json11.hpp>
 
+#include <QApplication>
+#include <QFileSystemWatcher>
+#include <filesystem>
+#include <fstream>
+#include <regex>
+#include <sstream>
+#include <util/platform.h>
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -97,6 +105,144 @@ void BrowserApp::OnBeforeCommandLineProcessing(
 #endif
 }
 
+/* Returns the full config path for the specified relative path.
+ */
+std::string BrowserApp::GetConfigPath(std::string relpath)
+{
+	std::string path = "obs-studio";
+	if (relpath != "")
+		path += "/" + relpath;
+	char cpath[512];
+	int res = os_get_config_path(cpath, sizeof(cpath), path.c_str());
+	return res > 0 ? std::string(cpath, res) : "";
+}
+
+/* Returns the contents of the specified CSS file.
+ * If the file does not exist, an empty string is returned.
+ */
+std::string BrowserApp::GetCSS(std::string id)
+{
+	std::string path = GetConfigPath("." + id + ".css");
+	if (path == "" || !os_file_exists(path.c_str()))
+		return "";
+	std::ifstream fs(path);
+	std::stringstream buf;
+	buf << fs.rdbuf();
+	return buf.str();
+}
+
+/* Uses a QFileSystemWatcher to react to changes in service CSS files.
+ */
+void BrowserApp::WatchCSS()
+{
+	// Used to post tasks on the renderer thread
+	class TaskImpl : public CefTask {
+		std::function<void()> fn;
+	public:
+		TaskImpl(std::function<void()> fn_) : fn(fn_) {}
+		virtual void Execute() override { fn(); }
+		IMPLEMENT_REFCOUNTING(TaskImpl);
+	};
+
+	// Create the Application for the event loop
+	int argc = 1;
+	char *argv[] = {(char *)"WatchCSS"};
+	QApplication app(argc, argv);
+
+	// Create a file system watcher (with just the config directory for)
+	std::string configPath = GetConfigPath();
+	QFileSystemWatcher watcher;
+	watcher.addPath(QString::fromStdString(configPath));
+
+	// We only care about files named .<ID>.css in the config directory
+	std::regex cssPathPattern("^.*/\\.(\\w+)\\.css$");
+
+	/* Called when a CSS file changes.
+	 */
+	auto OnFileChanged = [&](const QString &qPath) {
+		// Get the ID from the file path using regex
+		std::string path = qPath.toStdString();
+		std::smatch match;
+		std::regex_match(path, match, cssPathPattern);
+		std::string id = match[1];
+		// cout << "FILE CHANGED " << id << endl;
+
+		// From the renderer thread, notify the JavaScript callbacks
+		auto fn = std::bind(&BrowserApp::SendCSSChanged, this, id);
+		taskRunner->PostTask(CefRefPtr<TaskImpl>(new TaskImpl(fn)));
+	};
+
+	/* Registers for updates to any of the service CSS files we care about.
+	 */
+	auto UpdateFiles = [&](bool callFileChanged = true) {
+		for (const auto &entry : std::filesystem::directory_iterator(configPath)) {
+			// Make sure it's a regular file that matches the regex pattern
+			if (!entry.is_regular_file())
+				continue;
+			std::string path = entry.path();
+			if (!regex_match(path, cssPathPattern))
+				continue;
+
+			QString qPath = QString::fromStdString(path);
+			if (watcher.files().contains(qPath))
+				// We're already registered
+				continue;
+
+			// Register for future updates and send off callbacks
+			watcher.addPath(qPath);
+			if (callFileChanged)
+				OnFileChanged(qPath);
+		}
+	};
+
+	/* Called when a file is deleted or removed under our config directory.
+	 */
+	auto OnDirectoryChanged = [&](const QString &) {
+		// cout << "DIRECTORY CHANGED " << path.toStdString() << endl;
+		UpdateFiles();
+	};
+
+	UpdateFiles(false);
+	QObject::connect(&watcher, &QFileSystemWatcher::directoryChanged, OnDirectoryChanged);
+	QObject::connect(&watcher, &QFileSystemWatcher::fileChanged, OnFileChanged);
+
+	while (cssWatcherActive) {
+		// We don't have to process events that often
+		sleep(1);
+		app.processEvents();
+	}
+}
+
+/*
+ * Sends updated service CSS to any interested callbacks.
+ */
+void BrowserApp::SendCSSChanged(std::string id)
+{
+	// cout << "CSS CHANGED " << id << endl;
+
+	if (cssCallbackMap.empty())
+		return;
+	
+    for (CSSCallbackMap::iterator it = cssCallbackMap.begin();
+		it != cssCallbackMap.end();
+		++it)
+	{
+		if (it->first.first != id)
+			continue;
+
+		CefRefPtr<CefV8Context> context = it->second.first;
+		CefRefPtr<CefV8Value> callback = it->second.second;
+
+		CefV8ValueList arguments;
+		std::string css = GetCSS(id);
+		arguments.push_back(CefV8Value::CreateString(css));
+
+		context->Enter();
+		callback->ExecuteFunction(nullptr, arguments);
+		context->Exit();
+    }
+}
+
 std::vector<std::string> exposedFunctions = {
 	"getControlLevel",     "getCurrentScene",  "getStatus",
 	"startRecording",      "stopRecording",    "startStreaming",
@@ -128,6 +274,16 @@ void BrowserApp::OnContextCreated(CefRefPtr<CefBrowser> browser,
 		obsStudioObj->SetValue(name, func, V8_PROPERTY_ATTRIBUTE_NONE);
 	}
 
+	// Create functions for docks to retrieve service CSS and get notified of changes
+	std::string name = "getCSS";
+	CefRefPtr<CefV8Value> func =
+		CefV8Value::CreateFunction(name, this);
+	obsStudioObj->SetValue(name, func, V8_PROPERTY_ATTRIBUTE_NONE);
+	name = "onCSSChanged";
+	func =
+		CefV8Value::CreateFunction(name, this);
+	obsStudioObj->SetValue(name, func, V8_PROPERTY_ATTRIBUTE_NONE);
+
 #if !ENABLE_WASHIDDEN
 	int id = browser->GetIdentifier();
 	if (browserVis.find(id) != browserVis.end()) {
@@ -136,6 +292,23 @@ void BrowserApp::OnContextCreated(CefRefPtr<CefBrowser> browser,
 #else
 	UNUSED_PARAMETER(browser);
 #endif
+}
+
+void BrowserApp::OnContextReleased(
+	CefRefPtr<CefBrowser>,
+	CefRefPtr<CefFrame>,
+	CefRefPtr<CefV8Context> context)
+{
+	// Remove registered callbacks associated with this context
+	if (cssCallbackMap.empty())
+		return;
+	CSSCallbackMap::iterator it = cssCallbackMap.begin();
+    while (it != cssCallbackMap.end()) {
+		if (it->second.first->IsSame(context))
+			cssCallbackMap.erase(it++);
+		else
+			++it;
+    }
 }
 
 void BrowserApp::ExecuteJSFunction(CefRefPtr<CefBrowser> browser,
@@ -359,8 +532,47 @@ bool IsValidFunction(std::string function)
 
 bool BrowserApp::Execute(const CefString &name, CefRefPtr<CefV8Value>,
 			 const CefV8ValueList &arguments,
-			 CefRefPtr<CefV8Value> &, CefString &)
+			 CefRefPtr<CefV8Value> &retval, CefString &)
 {
+	if (name == "getCSS") {
+		// Returns the specified service CSS to the dock
+		if (arguments.size() == 1
+			&& arguments[0]->IsString())
+		{
+			std::string id = arguments[0]->GetStringValue();
+			retval = CefV8Value::CreateString(GetCSS(id));
+			return true;
+		}
+		return false;
+	}
+
+	if (name == "onCSSChanged") {
+		// A dock requested updates to a service CSS file
+		if (arguments.size() == 2
+			&& arguments[0]->IsString()
+			&& arguments[1]->IsFunction())
+		{
+			std::string id = arguments[0]->GetStringValue();
+			auto func = arguments[1];
+
+			// Save the reference to this callback/context
+			CefRefPtr<CefV8Context> context = CefV8Context::GetCurrentContext();
+			int browserID = context->GetBrowser()->GetIdentifier();
+			cssCallbackMap.insert(std::make_pair(
+				std::make_pair(id, browserID),
+				std::make_pair(context, func)));
+
+			if (!cssWatcherActive) {
+				// Start the watcher thread to process future changes
+				cssWatcherActive = true;
+				taskRunner = CefTaskRunner::GetForThread(TID_RENDERER);
+				cssWatcherThread = new std::thread(&BrowserApp::WatchCSS, this);
+			}
+			return true;
+		}
+		return false;
+	}
+
 	if (IsValidFunction(name.ToString())) {
 		if (arguments.size() >= 1 && arguments[0]->IsFunction()) {
 			callbackId++;
@@ -403,6 +615,16 @@ bool BrowserApp::Execute(const CefString &name, CefRefPtr<CefV8Value>,
 	}
 
 	return true;
+}
+
+BrowserApp::~BrowserApp()
+{
+	if (cssWatcherActive) {
+		cssWatcherActive = false;
+		cssWatcherThread->join();
+		cssWatcherThread = nullptr;
+		taskRunner = nullptr;
+	}
 }
 
 #ifdef USE_QT_LOOP
