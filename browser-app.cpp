@@ -155,7 +155,11 @@ void BrowserApp::WatchCSS()
 	watcher.addPath(QString::fromStdString(configPath));
 
 	// We only care about files named .<ID>.css in the config directory
+#ifdef _WIN32
+	std::regex cssPathPattern("^.*\\\\\\.(\\w+)\\.css$");
+#else
 	std::regex cssPathPattern("^.*/\\.(\\w+)\\.css$");
+#endif
 
 	/* Called when a CSS file changes.
 	 */
@@ -179,7 +183,7 @@ void BrowserApp::WatchCSS()
 			// Make sure it's a regular file that matches the regex pattern
 			if (!entry.is_regular_file())
 				continue;
-			std::string path = entry.path();
+			std::string path = entry.path().string();
 			if (!regex_match(path, cssPathPattern))
 				continue;
 
@@ -208,7 +212,11 @@ void BrowserApp::WatchCSS()
 
 	while (cssWatcherActive) {
 		// We don't have to process events that often
+#ifdef _WIN32
+		Sleep(1000);
+#else
 		sleep(1);
+#endif
 		app.processEvents();
 	}
 }
