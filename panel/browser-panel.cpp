@@ -144,10 +144,10 @@ QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_,
 
 	setFocusPolicy(Qt::ClickFocus);
 
-#ifndef __APPLE__
-	window = new QWindow();
-	window->setFlags(Qt::FramelessWindowHint);
-#endif
+// #ifndef __APPLE__
+// 	window = new QWindow();
+// 	window->setFlags(Qt::FramelessWindowHint);
+// #endif
 }
 
 QCefWidgetInternal::~QCefWidgetInternal()
@@ -286,7 +286,7 @@ void QCefWidgetInternal::unsetToplevelXdndProxy()
 void QCefWidgetInternal::Init()
 {
 #ifndef __APPLE__
-	WId handle = window->winId();
+	WId handle = winId();
 	QSize size = this->size();
 	size *= devicePixelRatioF();
 	bool success = QueueCEFTask(
@@ -343,11 +343,11 @@ void QCefWidgetInternal::Init()
 	if (success) {
 		timer.stop();
 #ifndef __APPLE__
-		if (!container) {
-			container =
-				QWidget::createWindowContainer(window, this);
-			container->show();
-		}
+		// if (!container) {
+		// 	container =
+		// 		QWidget::createWindowContainer(window, this);
+		// 	container->show();
+		// }
 
 		Resize();
 #endif
@@ -365,7 +365,7 @@ void QCefWidgetInternal::Resize()
 {
 	QSize size = this->size() * devicePixelRatioF();
 
-	bool success = QueueCEFTask([this, size]() {
+	/*bool success =*/ QueueCEFTask([this, size]() {
 		if (!cefBrowser)
 			return;
 
@@ -400,8 +400,8 @@ void QCefWidgetInternal::Resize()
 #endif
 	});
 
-	if (success && container)
-		container->resize(size.width(), size.height());
+	// if (success && container)
+	// 	container->resize(size.width(), size.height());
 #endif
 }
 
