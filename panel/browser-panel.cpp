@@ -287,10 +287,8 @@ void QCefWidgetInternal::Init()
 {
 #ifndef __APPLE__
 	WId handle = winId();
-	QSize size = this->size();
-	size *= devicePixelRatioF();
 	bool success = QueueCEFTask(
-		[this, handle, size]()
+		[this, handle]()
 #else
 	WId handle = winId();
 	bool success = QueueCEFTask(
@@ -320,9 +318,10 @@ void QCefWidgetInternal::Init()
 			windowInfo.SetAsChild((CefWindowHandle)handle, rc);
 #endif
 #else
+			// Give the wrong size initially,
+			// which seems to fix the sizing on first show
 			windowInfo.SetAsChild((CefWindowHandle)handle,
-					      CefRect(0, 0, size.width(),
-						      size.height()));
+					      CefRect(0, 0, 1, 1));
 #endif
 
 			CefRefPtr<QCefBrowserClient> browserClient =
@@ -387,15 +386,20 @@ void QCefWidgetInternal::Resize()
 		if (!xDisplay)
 			return;
 
-		XWindowChanges changes = {0};
-		changes.x = 0;
-		changes.y = 0;
-		changes.width = size.width();
-		changes.height = size.height();
-		XConfigureWindow(xDisplay, (Window)handle,
-				 CWX | CWY | CWHeight | CWWidth, &changes);
+		// XWindowChanges changes = {0};
+		// changes.x = 0;
+		// changes.y = 0;
+		// changes.width = size.width();
+		// changes.height = size.height();
+		// XConfigureWindow(xDisplay, (Window)handle,
+		// 		 CWX | CWY | CWHeight | CWWidth, &changes);
 #if CHROME_VERSION_BUILD >= 4638
-		XSync(xDisplay, false);
+		int res = XResizeWindow(xDisplay, (Window)handle,
+			size.width(), size.height());
+		if (res < BadValue)
+			XFlush(xDisplay);
+#else
+		XResizeWindow(xDisplay, (Window)handle, size.width(), size.height());
 #endif
 #endif
 	});
