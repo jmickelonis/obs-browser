@@ -309,7 +309,7 @@ static void BrowserInit(void)
 
 	CefSettings settings;
 	settings.log_severity = LOGSEVERITY_DISABLE;
-	settings.windowless_rendering_enabled = true;
+	settings.windowless_rendering_enabled = false;
 	settings.no_sandbox = true;
 
 	uint32_t obs_ver = obs_get_version();
@@ -703,9 +703,10 @@ bool obs_module_load(void)
 #endif
 
 	os_event_init(&cef_started_event, OS_EVENT_TYPE_MANUAL);
-	CefEnableHighDPISupport();
 
 #ifdef _WIN32
+	/* CefEnableHighDPISupport doesn't do anything on OS other than Windows. Would also crash macOS at this point as CEF is not directly linked */
+	CefEnableHighDPISupport();
 	EnumAdapterCount();
 #else
 #if defined(__APPLE__) && !defined(BROWSER_LEGACY)
