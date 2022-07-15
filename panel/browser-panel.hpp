@@ -3,7 +3,7 @@
 #include <obs-module.h>
 #include <util/platform.h>
 #include <util/util.hpp>
-#include <QWidget>
+#include <QFrame>
 
 #include <functional>
 #include <string>
@@ -34,11 +34,11 @@ struct QCefCookieManager {
 
 /* ------------------------------------------------------------------------- */
 
-class QCefWidget : public QWidget {
+class QCefWidget : public QFrame {
 	Q_OBJECT
 
 protected:
-	inline QCefWidget(QWidget *parent) : QWidget(parent) {}
+	inline QCefWidget(QWidget *parent) : QFrame(parent) {}
 
 public:
 	virtual void setURL(const std::string &url) = 0;
