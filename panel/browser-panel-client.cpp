@@ -214,18 +214,11 @@ bool QCefBrowserClient::OnBeforePopup(
 }
 
 bool QCefBrowserClient::OnSetFocus(CefRefPtr<CefBrowser>,
-				   CefFocusHandler::FocusSource source)
+				   CefFocusHandler::FocusSource)
 {
-	/* Don't steal focus when the webpage navigates. This is especially
-	   obvious on startup when the user has many browser docks defined,
-	   as each one will steal focus one by one, resulting in poor UX.
-	 */
-	switch (source) {
-	case FOCUS_SOURCE_NAVIGATION:
-		return true;
-	default:
-		return false;
-	}
+	// Denying focus here seems to help in a few instances.
+	// Before, tab navigation didn't work properly when switching focus to other docks.
+	return true;
 }
 
 void QCefBrowserClient::OnBeforeContextMenu(CefRefPtr<CefBrowser>,
