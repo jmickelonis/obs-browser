@@ -356,10 +356,10 @@ void QCefWidgetInternal::Init()
 
 		auto windowCallback = [this](CefRefPtr<CefWindow> cefWindow) {
 			// This is called when the window is created and ready
-			WId windowHandle = cefWindow->GetWindowHandle();
+			auto windowHandle = cefWindow->GetWindowHandle();
 			QTimer::singleShot(0, this, [this, windowHandle]() {
 				// Grab the browser window and put it in a container
-				window = QWindow::fromWinId(windowHandle);
+				window = QWindow::fromWinId((WId) windowHandle);
 				container = QWidget::createWindowContainer(window, this);
 				QLayout *layout = this->layout();
 				layout->takeAt(0);
