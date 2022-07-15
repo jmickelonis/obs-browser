@@ -20,6 +20,10 @@
 #include <util/base.h>
 #include <thread>
 
+#include <QDockWidget>
+#include "include/views/cef_browser_view.h"
+#include "include/views/cef_window.h"
+
 #if !defined(_WIN32) && !defined(__APPLE__)
 #include <X11/Xlib.h>
 #endif
@@ -131,27 +135,38 @@ struct QCefCookieManagerInternal : QCefCookieManager {
 
 /* ------------------------------------------------------------------------- */
 
+#include <QGridLayout>
+
 QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_,
 				       CefRefPtr<CefRequestContext> rqc_)
 	: QCefWidget(parent), url(url_), rqc(rqc_)
 {
-	setAttribute(Qt::WA_PaintOnScreen);
-	setAttribute(Qt::WA_StaticContents);
-	setAttribute(Qt::WA_NoSystemBackground);
-	setAttribute(Qt::WA_OpaquePaintEvent);
-	setAttribute(Qt::WA_DontCreateNativeAncestors);
-	setAttribute(Qt::WA_NativeWindow);
+	// setAttribute(Qt::WA_PaintOnScreen);
+	// setAttribute(Qt::WA_StaticContents);
+	// setAttribute(Qt::WA_NoSystemBackground);
+	// setAttribute(Qt::WA_OpaquePaintEvent);
+	// setAttribute(Qt::WA_DontCreateNativeAncestors);
+	// setAttribute(Qt::WA_NativeWindow);
 
 	setFocusPolicy(Qt::ClickFocus);
 
-// #ifndef __APPLE__
-// 	window = new QWindow();
-// 	window->setFlags(Qt::FramelessWindowHint);
-// #endif
+	QGridLayout *layout = new QGridLayout();
+	layout->setContentsMargins(0, 0, 0, 0);
+	setLayout(layout);
 }
 
 QCefWidgetInternal::~QCefWidgetInternal()
 {
+	if (window) {
+		delete window;
+		window = nullptr;
+	}
+
+	if (container) {
+		delete container;
+		container = nullptr;
+	}
+
 	closeBrowser();
 }
 
@@ -159,9 +174,9 @@ void QCefWidgetInternal::closeBrowser()
 {
 	CefRefPtr<CefBrowser> browser = cefBrowser;
 	if (!!browser) {
-		auto destroyBrowser = [](CefRefPtr<CefBrowser> cefBrowser) {
+		auto destroyBrowser = [browser]() {
 			CefRefPtr<CefClient> client =
-				cefBrowser->GetHost()->GetClient();
+				browser->GetHost()->GetClient();
 			QCefBrowserClient *bc =
 				reinterpret_cast<QCefBrowserClient *>(
 					client.get());
@@ -170,7 +185,7 @@ void QCefWidgetInternal::closeBrowser()
 				bc->widget = nullptr;
 			}
 
-			cefBrowser->GetHost()->CloseBrowser(true);
+			browser->GetHost()->CloseBrowser(true);
 		};
 
 		/* So you're probably wondering what's going on here.  If you
@@ -189,20 +204,22 @@ void QCefWidgetInternal::closeBrowser()
 		 * So, instead, before closing the browser, we need to decouple
 		 * the browser from the widget.  To do this, we hide it, then
 		 * remove its parent. */
-#ifdef _WIN32
-		HWND hwnd = (HWND)cefBrowser->GetHost()->GetWindowHandle();
-		if (hwnd) {
-			ShowWindow(hwnd, SW_HIDE);
-			SetParent(hwnd, nullptr);
-		}
-#elif __APPLE__
-		// felt hacky, might delete later
-		id view = (id)cefBrowser->GetHost()->GetWindowHandle();
-		((void (*)(id, SEL))objc_msgSend)(
-			view, sel_getUid("removeFromSuperview"));
-#endif
+// #ifdef _WIN32
+// 		HWND hwnd = (HWND)cefBrowser->GetHost()->GetWindowHandle();
+// 		if (hwnd) {
+// 			ShowWindow(hwnd, SW_HIDE);
+// 			SetParent(hwnd, nullptr);
+// 		}
+// #elif __APPLE__
+// 		// felt hacky, might delete later
+// 		id view = (id)cefBrowser->GetHost()->GetWindowHandle();
+// 		((void (*)(id, SEL))objc_msgSend)(
+// 			view, sel_getUid("removeFromSuperview"));
+// #endif
 
-		destroyBrowser(browser);
+		// This should be called from the CEF thread
+		QueueCEFTask(destroyBrowser);
+
 		browser = nullptr;
 		cefBrowser = nullptr;
 	}
@@ -283,88 +300,118 @@ void QCefWidgetInternal::unsetToplevelXdndProxy()
 }
 #endif
 
+// Instead of the past solution (letting CEF render to our widgets directly),
+// we let CEF create its own window, then grab it in a container so we can embed it.
+// This solves a lot of issues we were seeing before (visual glitches, docks popping
+// back out on drags, docks not rendering at all, etc).
+// We don't even have to resize manually any more!
+// Still seeing some segfaults on app exit, but this is much closer to being perfect.
+class BrowserWindowDelegate : public CefWindowDelegate
+{
+
+public:
+
+	BrowserWindowDelegate(
+		CefRefPtr<CefBrowserView> browserView,
+		std::function<void(CefRefPtr<CefWindow>)> windowCallback)
+			: browserView(browserView), windowCallback(windowCallback)
+	{ }
+
+	void OnWindowCreated(CefRefPtr<CefWindow> window) override
+	{
+		window->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
+		window->AddChildView(browserView);
+		window->Show();
+		windowCallback(window);
+	}
+
+	void OnWindowDestroyed(CefRefPtr<CefWindow>) override
+	{
+		browserView = nullptr;
+	}
+
+	bool CanClose(CefRefPtr<CefWindow>) override
+	{
+		return true;
+	}
+
+private:
+
+	CefRefPtr<CefBrowserView> browserView;
+	std::function<void(CefRefPtr<CefWindow>)> windowCallback;
+
+	IMPLEMENT_REFCOUNTING(BrowserWindowDelegate);
+	DISALLOW_COPY_AND_ASSIGN(BrowserWindowDelegate);
+
+};
+
 void QCefWidgetInternal::Init()
 {
-#ifndef __APPLE__
-	WId handle = winId();
-	bool success = QueueCEFTask(
-		[this, handle]()
-#else
-	WId handle = winId();
-	bool success = QueueCEFTask(
-		[this, handle]()
-#endif
-		{
-			CefWindowInfo windowInfo;
+	bool success = QueueCEFTask([this]() {
+		/* Make sure Init isn't called more than once. */
+		if (cefBrowser)
+			return;
 
-			/* Make sure Init isn't called more than once. */
-			if (cefBrowser)
-				return;
+		// See comments in BrowserWindowDelegate!
 
-#ifdef __APPLE__
-			QSize size = this->size();
-#endif
+		auto windowCallback = [this](CefRefPtr<CefWindow> cefWindow) {
+			// This is called when the window is created and ready
+			WId windowHandle = cefWindow->GetWindowHandle();
+			QTimer::singleShot(0, this, [this, windowHandle]() {
+				// Grab the browser window and put it in a container
+				window = QWindow::fromWinId(windowHandle);
+				container = QWidget::createWindowContainer(window, this);
+				QLayout *layout = this->layout();
+				layout->takeAt(0);
+				layout->addWidget(container);
 
-#if CHROME_VERSION_BUILD < 4430
-#ifdef __APPLE__
-			windowInfo.SetAsChild((CefWindowHandle)handle, 0, 0,
-					      size.width(), size.height());
-#else
-#ifdef _WIN32
-			RECT rc = {0, 0, size.width(), size.height()};
-#else
-			CefRect rc = {0, 0, size.width(), size.height()};
-#endif
-			windowInfo.SetAsChild((CefWindowHandle)handle, rc);
-#endif
-#else
-			// Give the wrong size initially,
-			// which seems to fix the sizing on first show
-			windowInfo.SetAsChild((CefWindowHandle)handle,
-					      CefRect(0, 0, 1, 1));
-#endif
+				// Sometimes for floating docks, the window location doesn't get
+				// updated properly... this works around that
+				QTimer::singleShot(250, this, [this]() {
+					QDockWidget *dockWidget = qobject_cast<QDockWidget*>(parentWidget());
+					if (!dockWidget || !dockWidget->isFloating())
+						return;
+					QWindow *qWindow = dockWidget->window()->windowHandle();
+					int w = qWindow->width();
+					int h = qWindow->height();
+					qWindow->resize(w, h - 1);
+					qWindow->resize(w, h);
+				});
+			});
+		};
 
-			CefRefPtr<QCefBrowserClient> browserClient =
-				new QCefBrowserClient(this, script,
-						      allowAllPopups_);
+		CefRefPtr<QCefBrowserClient> browserClient =
+			new QCefBrowserClient(this, script, allowAllPopups_);
+		CefBrowserSettings cefBrowserSettings;
+		cefBrowserSettings.background_color = CefColorSetARGB(0, 0, 0, 0);
+		CefRefPtr<CefBrowserView> browserView = CefBrowserView::CreateBrowserView(
+			browserClient, url, cefBrowserSettings,
+			CefRefPtr<CefDictionaryValue>(), rqc, nullptr);
+		browserView->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
+		CefRefPtr<CefWindow> cefWindow = CefWindow::CreateTopLevelWindow(
+			new BrowserWindowDelegate(browserView, windowCallback));
 
-			CefBrowserSettings cefBrowserSettings;
-			cefBrowser = CefBrowserHost::CreateBrowserSync(
-				windowInfo, browserClient, url,
-				cefBrowserSettings,
-				CefRefPtr<CefDictionaryValue>(), rqc);
+		cefBrowser = browserView->GetBrowser();
+	});
 
-#ifdef __linux__
-			QueueCEFTask([this]() { unsetToplevelXdndProxy(); });
-#endif
-		});
-
-	if (success) {
+	if (success)
 		timer.stop();
-#ifndef __APPLE__
-		// if (!container) {
-		// 	container =
-		// 		QWidget::createWindowContainer(window, this);
-		// 	container->show();
-		// }
-
-		Resize();
-#endif
-	}
 }
 
 void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
 {
 	QWidget::resizeEvent(event);
 #ifndef __APPLE__
-	Resize();
+	// Resize();
 }
 
 void QCefWidgetInternal::Resize()
 {
-	QSize size = this->size() * devicePixelRatioF();
+	qreal pixelRatio = devicePixelRatioF();
+	QSize size = this->size() * pixelRatio;
+	QMargins margins = contentsMargins() * pixelRatio;
 
-	/*bool success =*/ QueueCEFTask([this, size]() {
+	/*bool success =*/ QueueCEFTask([this, size, margins]() {
 		if (!cefBrowser)
 			return;
 
@@ -386,20 +433,18 @@ void QCefWidgetInternal::Resize()
 		if (!xDisplay)
 			return;
 
-		// XWindowChanges changes = {0};
-		// changes.x = 0;
-		// changes.y = 0;
-		// changes.width = size.width();
-		// changes.height = size.height();
-		// XConfigureWindow(xDisplay, (Window)handle,
-		// 		 CWX | CWY | CWHeight | CWWidth, &changes);
+		XWindowChanges changes = {0};
+		int x = margins.left();
+		int y = margins.top();
+		changes.x = x;
+		changes.y = y;
+		changes.width = size.width() - (x + margins.right());
+		changes.height = size.height() - (y + margins.bottom());
+		XConfigureWindow(xDisplay, (Window)handle,
+				 CWX | CWY | CWHeight | CWWidth, &changes);
+
 #if CHROME_VERSION_BUILD >= 4638
-		int res = XResizeWindow(xDisplay, (Window)handle,
-			size.width(), size.height());
-		if (res < BadValue)
-			XFlush(xDisplay);
-#else
-		XResizeWindow(xDisplay, (Window)handle, size.width(), size.height());
+		XFlush(xDisplay);
 #endif
 #endif
 	});
@@ -423,7 +468,8 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 
 QPaintEngine *QCefWidgetInternal::paintEngine() const
 {
-	return nullptr;
+	// return nullptr;
+	return QCefWidget::paintEngine();
 }
 
 void QCefWidgetInternal::setURL(const std::string &url_)
