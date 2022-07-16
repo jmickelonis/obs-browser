@@ -311,10 +311,8 @@ class BrowserWindowDelegate : public CefWindowDelegate
 
 public:
 
-	BrowserWindowDelegate(
-		CefRefPtr<CefBrowserView> browserView,
-		std::function<void(CefRefPtr<CefWindow>)> windowCallback)
-			: browserView(browserView), windowCallback(windowCallback)
+	BrowserWindowDelegate(CefRefPtr<CefBrowserView> browserView)
+		: browserView(browserView)
 	{ }
 
 	void OnWindowCreated(CefRefPtr<CefWindow> window) override
@@ -322,7 +320,6 @@ public:
 		window->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
 		window->AddChildView(browserView);
 		window->Show();
-		windowCallback(window);
 	}
 
 	void OnWindowDestroyed(CefRefPtr<CefWindow>) override
@@ -330,15 +327,17 @@ public:
 		browserView = nullptr;
 	}
 
-	bool CanClose(CefRefPtr<CefWindow>) override
+	bool CanClose(CefRefPtr<CefWindow> window) override
 	{
+		if (browserView)
+			// Removing the view before closing prevents crashes when switching profiles
+			window->RemoveChildView(browserView);
 		return true;
 	}
 
 private:
 
 	CefRefPtr<CefBrowserView> browserView;
-	std::function<void(CefRefPtr<CefWindow>)> windowCallback;
 
 	IMPLEMENT_REFCOUNTING(BrowserWindowDelegate);
 	DISALLOW_COPY_AND_ASSIGN(BrowserWindowDelegate);
@@ -354,21 +353,45 @@ void QCefWidgetInternal::Init()
 
 		// See comments in BrowserWindowDelegate!
 
-		auto windowCallback = [this](CefRefPtr<CefWindow> cefWindow) {
-			// This is called when the window is created and ready
-			auto windowHandle = cefWindow->GetWindowHandle();
-			QTimer::singleShot(0, this, [this, windowHandle]() {
+		CefBrowserSettings cefBrowserSettings;
+		cefBrowserSettings.background_color = CefColorSetARGB(0, 0, 0, 0);
+
+		CefRefPtr<CefBrowserView> browserView = CefBrowserView::CreateBrowserView(
+			new QCefBrowserClient(this, script, allowAllPopups_),
+			url, cefBrowserSettings,
+			nullptr, rqc, nullptr);
+		browserView->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
+		CefWindow::CreateTopLevelWindow(new BrowserWindowDelegate(browserView));
+
+		CefRefPtr<CefBrowser> browser = browserView->GetBrowser();
+		cefBrowser = browser;
+
+		auto windowHandle = cefBrowser->GetHost()->GetWindowHandle();//->GetWindowHandle();
+		QTimer::singleShot(0, this, [this, browser, windowHandle]() {
+			// We're back in Qt's event loop
+			if (cefBrowser != browser)
+				return;
+			window = QWindow::fromWinId((WId) windowHandle);
+
+			// Wait a while longer or sometimes the window will show up in the task bar
+			QTimer::singleShot(50, this, [this, browser]() {
+				if (cefBrowser != browser)
+					return;
+
 				// Grab the browser window and put it in a container
-				window = QWindow::fromWinId((WId) windowHandle);
 				container = QWidget::createWindowContainer(window, this);
 				QLayout *layout = this->layout();
-				layout->takeAt(0);
+				delete layout->takeAt(0);
 				layout->addWidget(container);
 
 				// Sometimes for floating docks, the window location doesn't get
 				// updated properly... this works around that
-				QTimer::singleShot(250, this, [this]() {
-					QDockWidget *dockWidget = qobject_cast<QDockWidget*>(parentWidget());
+				QTimer::singleShot(50, this, [this, browser]() {
+					if (cefBrowser != browser)
+						return;
+
+					QDockWidget *dockWidget =
+						qobject_cast<QDockWidget*>(parentWidget());
 					if (!dockWidget || !dockWidget->isFloating())
 						return;
 					QWindow *qWindow = dockWidget->window()->windowHandle();
@@ -378,20 +401,7 @@ void QCefWidgetInternal::Init()
 					qWindow->resize(w, h);
 				});
 			});
-		};
-
-		CefRefPtr<QCefBrowserClient> browserClient =
-			new QCefBrowserClient(this, script, allowAllPopups_);
-		CefBrowserSettings cefBrowserSettings;
-		cefBrowserSettings.background_color = CefColorSetARGB(0, 0, 0, 0);
-		CefRefPtr<CefBrowserView> browserView = CefBrowserView::CreateBrowserView(
-			browserClient, url, cefBrowserSettings,
-			CefRefPtr<CefDictionaryValue>(), rqc, nullptr);
-		browserView->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
-		CefRefPtr<CefWindow> cefWindow = CefWindow::CreateTopLevelWindow(
-			new BrowserWindowDelegate(browserView, windowCallback));
-
-		cefBrowser = browserView->GetBrowser();
+		});
 	});
 
 	if (success)
