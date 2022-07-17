@@ -398,6 +398,11 @@ public:
 		return true;
 	}
 
+	virtual bool CanResize(CefRefPtr<CefWindow>) override
+	{
+		return false;
+	}
+
 	void OnWindowCreated(CefRefPtr<CefWindow> window) override
 	{
 		window->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
