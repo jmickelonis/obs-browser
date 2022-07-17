@@ -466,6 +466,7 @@ void QCefWidgetInternal::Init()
 
 				// Grab the browser window and put it in a container
 				container = QWidget::createWindowContainer(window, this);
+				container->setAttribute(Qt::WA_NativeWindow);
 				QRect bounds = contentsRect();
 				container->resize(bounds.width(), bounds.height());
 
