@@ -1,7 +1,10 @@
 #pragma once
 
+#include <QConicalGradient>
 #include <QTimer>
+#include <QPainterPath>
 #include <QPointer>
+#include <QPropertyAnimation>
 #include "browser-panel.hpp"
 #include "cef-headers.hpp"
 
@@ -23,6 +26,39 @@ extern std::vector<PopupWhitelistInfo> popup_whitelist;
 extern std::vector<PopupWhitelistInfo> forced_popups;
 
 /* ------------------------------------------------------------------------- */
+
+class ProgressWidget : public QWidget
+{
+	Q_OBJECT
+    Q_PROPERTY(qreal angle READ getAngle WRITE setAngle)
+
+public:
+
+	static const int thickness = 10;
+
+	static const int w = 50;
+	static const int h = 50;
+
+	ProgressWidget(QWidget *parent = nullptr);
+	~ProgressWidget();
+
+	qreal getAngle();
+	void setAngle(qreal angle);
+
+	virtual QSize sizeHint() const override;
+
+protected:
+
+	virtual bool event(QEvent *) override;
+	virtual void paintEvent(QPaintEvent *) override;
+
+private:
+
+	QPropertyAnimation *animation;
+	QConicalGradient gradient;
+	QPainterPath path;
+
+};
 
 class QCefWidgetInternal : public QCefWidget {
 	Q_OBJECT
@@ -52,9 +88,12 @@ public:
 	virtual void reloadPage() override;
 
 	void Resize();
+	void onLoadEnd();
 
-#ifdef __linux__
 private:
+	bool loading = false;
+	void showContainer();
+#ifdef __linux__
 	bool needsDeleteXdndProxy = true;
 	void unsetToplevelXdndProxy();
 #endif
