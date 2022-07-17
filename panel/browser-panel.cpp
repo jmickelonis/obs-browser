@@ -21,6 +21,9 @@
 #include <thread>
 
 #include <QDockWidget>
+#include <QGridLayout>
+#include <QPainter>
+#include <QPainterPath>
 #include "include/views/cef_browser_view.h"
 #include "include/views/cef_window.h"
 
@@ -135,7 +138,82 @@ struct QCefCookieManagerInternal : QCefCookieManager {
 
 /* ------------------------------------------------------------------------- */
 
-#include <QGridLayout>
+ProgressWidget::ProgressWidget(QWidget *parent)
+	: QWidget(parent), gradient(w / 2, h / 2, 0)
+{
+	setMaximumSize(sizeHint());
+
+	gradient.setColorAt(0, palette().color(QPalette::Highlight));
+	gradient.setColorAt(1, Qt::transparent);
+
+	path.addEllipse(
+		thickness / 2, thickness / 2,
+		w - thickness, h - thickness);
+
+	animation = nullptr;
+}
+
+ProgressWidget::~ProgressWidget()
+{
+	if (animation) {
+		delete animation;
+		animation = nullptr;
+	}
+}
+
+qreal ProgressWidget::getAngle()
+{
+	return gradient.angle();
+}
+
+void ProgressWidget::setAngle(qreal angle)
+{
+	gradient.setAngle(angle);
+	update();
+}
+
+QSize ProgressWidget::sizeHint() const
+{
+	return QSize(w, h);
+}
+
+bool ProgressWidget::event(QEvent *event)
+{
+	switch (event->type()) {
+	case QEvent::PaletteChange:
+		gradient.setColorAt(0, palette().color(QPalette::Highlight));
+		break;
+	case QEvent::Show:
+		if (!animation) {
+			animation = new QPropertyAnimation(this, "angle");
+			animation->setDuration(1000);
+			animation->setStartValue(360);
+			animation->setEndValue(0);
+			animation->setLoopCount(-1);
+			animation->start();
+		}
+		break;
+	case QEvent::Hide:
+		if (animation) {
+			animation->stop();
+			delete animation;
+			animation = nullptr;
+		}
+		break;
+	default:
+		break;
+	}
+	return QWidget::event(event);
+}
+
+void ProgressWidget::paintEvent(QPaintEvent *)
+{
+	QPainter painter(this);
+	painter.setRenderHint(QPainter::Antialiasing);
+	painter.setPen(QPen(gradient, thickness));
+	painter.drawPath(path);
+}
+
 
 QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_,
 				       CefRefPtr<CefRequestContext> rqc_)
@@ -315,6 +393,11 @@ public:
 		: browserView(browserView)
 	{ }
 
+	virtual bool IsFrameless(CefRefPtr<CefWindow>) override
+	{
+		return true;
+	}
+
 	void OnWindowCreated(CefRefPtr<CefWindow> window) override
 	{
 		window->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
@@ -368,44 +451,67 @@ void QCefWidgetInternal::Init()
 
 		auto windowHandle = cefBrowser->GetHost()->GetWindowHandle();//->GetWindowHandle();
 		QTimer::singleShot(0, this, [this, browser, windowHandle]() {
-			// We're back in Qt's event loop
-			if (cefBrowser != browser)
-				return;
 			window = QWindow::fromWinId((WId) windowHandle);
 
-			// Wait a while longer or sometimes the window will show up in the task bar
+			// Wait a short while before creating the container
+			// (otherwise for some reason it doesn't always grab the window correctly)
 			QTimer::singleShot(50, this, [this, browser]() {
-				if (cefBrowser != browser)
+				if (browser != cefBrowser)
 					return;
 
 				// Grab the browser window and put it in a container
 				container = QWidget::createWindowContainer(window, this);
-				QLayout *layout = this->layout();
-				delete layout->takeAt(0);
-				layout->addWidget(container);
+				QRect bounds = contentsRect();
+				container->resize(bounds.width(), bounds.height());
 
-				// Sometimes for floating docks, the window location doesn't get
-				// updated properly... this works around that
-				QTimer::singleShot(50, this, [this, browser]() {
-					if (cefBrowser != browser)
-						return;
-
-					QDockWidget *dockWidget =
-						qobject_cast<QDockWidget*>(parentWidget());
-					if (!dockWidget || !dockWidget->isFloating())
-						return;
-					QWindow *qWindow = dockWidget->window()->windowHandle();
-					int w = qWindow->width();
-					int h = qWindow->height();
-					qWindow->resize(w, h - 1);
-					qWindow->resize(w, h);
-				});
+				if (!loading)
+					showContainer();
 			});
 		});
 	});
 
 	if (success)
 		timer.stop();
+}
+
+void QCefWidgetInternal::showContainer()
+{
+	if (!container)
+		return;
+
+	QLayout *layout = this->layout();
+	QLayoutItem *child;
+	while ((child = layout->takeAt(0)) != nullptr) {
+		delete child->widget();
+		delete child;
+	}
+	layout->addWidget(container);
+
+	// Sometimes for floating docks, the window location doesn't get
+	// updated properly... this works around that
+	QTimer::singleShot(50, this, [this]() {
+		QDockWidget *dockWidget = qobject_cast<QDockWidget*>(parentWidget());
+		if (!dockWidget || !dockWidget->isFloating())
+			return;
+		QWindow *qWindow = dockWidget->window()->windowHandle();
+		int w = qWindow->width();
+		int h = qWindow->height();
+		qWindow->resize(w, h - 1);
+		qWindow->resize(w, h);
+	});
+}
+
+void QCefWidgetInternal::onLoadEnd()
+{
+	if (!loading)
+		return;
+
+	loading = false;
+
+	if (container)
+		QTimer::singleShot(0, this, [this]() {
+			QTimer::singleShot(250, this, &QCefWidgetInternal::showContainer);
+		});
 }
 
 void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
@@ -469,6 +575,16 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	QWidget::showEvent(event);
 
 	if (!cefBrowser) {
+		loading = true;
+
+		QLayout *layout = this->layout();
+		QLayoutItem *child;
+		while ((child = layout->takeAt(0)) != nullptr) {
+			delete child->widget();
+			delete child;
+		}
+		layout->addWidget(new ProgressWidget);
+
 		obs_browser_initialize();
 		connect(&timer, SIGNAL(timeout()), this, SLOT(Init()));
 		timer.start(500);
