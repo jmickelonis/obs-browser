@@ -378,6 +378,8 @@ void QCefWidgetInternal::unsetToplevelXdndProxy()
 }
 #endif
 
+#include <iostream>
+
 // Instead of the past solution (letting CEF render to our widgets directly),
 // we let CEF create its own window, then grab it in a container so we can embed it.
 // This solves a lot of issues we were seeing before (visual glitches, docks popping
@@ -393,9 +395,15 @@ public:
 		: browserView(browserView)
 	{ }
 
+	virtual cef_show_state_t GetInitialShowState(CefRefPtr<CefWindow>) override
+	{
+		return CEF_SHOW_STATE_MINIMIZED;
+	}
+
 	virtual bool IsFrameless(CefRefPtr<CefWindow>) override
 	{
-		return true;
+		// For some reason returning true prevents presses near the border
+		return false;
 	}
 
 	virtual bool CanResize(CefRefPtr<CefWindow>) override
