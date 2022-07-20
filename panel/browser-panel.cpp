@@ -462,7 +462,7 @@ void QCefWidgetInternal::Init()
 		CefRefPtr<CefBrowser> browser = browserView->GetBrowser();
 		cefBrowser = browser;
 
-		auto windowHandle = cefBrowser->GetHost()->GetWindowHandle();//->GetWindowHandle();
+		auto windowHandle = cefBrowser->GetHost()->GetWindowHandle();
 		QTimer::singleShot(0, this, [this, browser, windowHandle]() {
 			window = QWindow::fromWinId((WId) windowHandle);
 
@@ -499,19 +499,6 @@ void QCefWidgetInternal::showContainer()
 		delete child;
 	}
 	layout->addWidget(container);
-
-	// Sometimes for floating docks, the window location doesn't get
-	// updated properly... this works around that
-	QTimer::singleShot(50, this, [this]() {
-		QDockWidget *dockWidget = qobject_cast<QDockWidget*>(parentWidget());
-		if (!dockWidget || !dockWidget->isFloating())
-			return;
-		QWindow *qWindow = dockWidget->window()->windowHandle();
-		int w = qWindow->width();
-		int h = qWindow->height();
-		qWindow->resize(w, h - 1);
-		qWindow->resize(w, h);
-	});
 }
 
 void QCefWidgetInternal::onLoadEnd()
