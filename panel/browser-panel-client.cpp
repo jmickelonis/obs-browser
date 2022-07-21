@@ -167,7 +167,8 @@ void QCefBrowserClient::OnLoadError(CefRefPtr<CefBrowser> browser,
 	bfree(path);
 	bfree(errorPage);
 
-	widget->onLoadEnd();
+	if (widget)
+		widget->onLoadEnd();
 }
 
 /* CefLifeSpanHandler */
@@ -302,7 +303,8 @@ void QCefBrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>,
 	if (!script.empty())
 		frame->ExecuteJavaScript(script, CefString(), 0);
 
-	widget->onLoadEnd();
+	if (widget)
+		widget->onLoadEnd();
 }
 
 bool QCefBrowserClient::OnJSDialog(CefRefPtr<CefBrowser>, const CefString &,
