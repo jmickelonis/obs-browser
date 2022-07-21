@@ -479,12 +479,20 @@ void QCefWidgetInternal::Init()
 			cefContainer->setVisible(false);
 			layout()->addWidget(cefContainer);
 
-			QueueCEFTask([this, browser]() {
-				if (browser != cefBrowser)
-					return;
-				// This won't show anything yet since the container isn't visible
-				nativeWindow->Show();
-			});
+			auto showNative = [this, browser]() {
+				QueueCEFTask([this, browser]() {
+					if (browser != cefBrowser)
+						return;
+					// This won't show anything yet since the container isn't visible
+					nativeWindow->Show();
+				});
+			};
+#ifdef __linux__
+			// Delay this slightly on Linux or it doesn't grab the window properly
+			QTimer::singleShot(50, this, showNative);
+#else
+			showNative();
+#endif
 
 			if (!loading)
 				// Finished already
