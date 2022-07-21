@@ -7,6 +7,7 @@
 #include <QPropertyAnimation>
 #include "browser-panel.hpp"
 #include "cef-headers.hpp"
+#include "include/views/cef_window.h"
 
 #include <vector>
 #include <mutex>
@@ -73,8 +74,6 @@ public:
 	std::string script;
 	CefRefPtr<CefRequestContext> rqc;
 	QTimer timer;
-	QPointer<QWindow> window;
-	QPointer<QWidget> container;
 	bool allowAllPopups_ = false;
 
 	virtual void resizeEvent(QResizeEvent *event) override;
@@ -91,7 +90,11 @@ public:
 	void onLoadEnd();
 
 private:
-	bool loading = false;
+	volatile bool loading = false;
+	QPointer<QWindow> cefWindow;
+	QPointer<QWidget> cefContainer;
+	CefRefPtr<CefWindow> nativeWindow;
+	void removeChildren();
 	void showContainer();
 #ifdef __linux__
 	bool needsDeleteXdndProxy = true;

@@ -235,36 +235,41 @@ QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_,
 
 QCefWidgetInternal::~QCefWidgetInternal()
 {
-	if (window) {
-		delete window;
-		window = nullptr;
-	}
-
-	if (container) {
-		delete container;
-		container = nullptr;
-	}
-
+	loading = false;
 	closeBrowser();
+
+	if (cefWindow) {
+		cefWindow->setParent(nullptr);
+		delete cefWindow;
+		cefWindow = nullptr;
+	}
+
+	cefContainer = nullptr;
+	removeChildren();
 }
 
 void QCefWidgetInternal::closeBrowser()
 {
-	CefRefPtr<CefBrowser> browser = cefBrowser;
-	if (!!browser) {
-		auto destroyBrowser = [browser]() {
-			CefRefPtr<CefClient> client =
-				browser->GetHost()->GetClient();
-			QCefBrowserClient *bc =
-				reinterpret_cast<QCefBrowserClient *>(
-					client.get());
+	timer.stop();
 
-			if (bc) {
-				bc->widget = nullptr;
-			}
+	if (!!cefBrowser) {
+		CefRefPtr<CefClient> client = cefBrowser->GetHost()->GetClient();
+		QCefBrowserClient *browserClient =
+			reinterpret_cast<QCefBrowserClient *>(client.get());
+		if (browserClient)
+			browserClient->widget = nullptr;
 
-			browser->GetHost()->CloseBrowser(true);
-		};
+		// Close from CEF's event loop and wait for it to finish
+		volatile bool closing = true;
+		QueueCEFTask([&]() {
+			nativeWindow->Hide();
+			cefBrowser->GetHost()->CloseBrowser(true);
+			closing = false;
+		});
+		while (closing) os_sleep_ms(1);
+
+		cefBrowser = nullptr;
+		nativeWindow = nullptr;
 
 		/* So you're probably wondering what's going on here.  If you
 		 * call CefBrowserHost::CloseBrowser, and it fails to unload
@@ -294,12 +299,6 @@ void QCefWidgetInternal::closeBrowser()
 // 		((void (*)(id, SEL))objc_msgSend)(
 // 			view, sel_getUid("removeFromSuperview"));
 // #endif
-
-		// This should be called from the CEF thread
-		QueueCEFTask(destroyBrowser);
-
-		browser = nullptr;
-		cefBrowser = nullptr;
 	}
 }
 
@@ -415,7 +414,6 @@ public:
 	{
 		window->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
 		window->AddChildView(browserView);
-		window->Show();
 	}
 
 	void OnWindowDestroyed(CefRefPtr<CefWindow>) override
@@ -426,7 +424,8 @@ public:
 	bool CanClose(CefRefPtr<CefWindow> window) override
 	{
 		if (browserView)
-			// Removing the view before closing prevents crashes when switching profiles
+			// Removing the view before closing
+			// helps prevent crashes when switching profiles
 			window->RemoveChildView(browserView);
 		return true;
 	}
@@ -457,29 +456,35 @@ void QCefWidgetInternal::Init()
 			url, cefBrowserSettings,
 			nullptr, rqc, nullptr);
 		browserView->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
-		CefWindow::CreateTopLevelWindow(new BrowserWindowDelegate(browserView));
+		nativeWindow = CefWindow::CreateTopLevelWindow(
+			new BrowserWindowDelegate(browserView));
 
 		CefRefPtr<CefBrowser> browser = browserView->GetBrowser();
 		cefBrowser = browser;
 
-		auto windowHandle = cefBrowser->GetHost()->GetWindowHandle();
+		auto windowHandle = nativeWindow->GetWindowHandle();
 		QTimer::singleShot(0, this, [this, browser, windowHandle]() {
-			window = QWindow::fromWinId((WId) windowHandle);
+			// We're back in the Qt event loop
 
-			// Wait a short while before creating the container
-			// (otherwise for some reason it doesn't always grab the window correctly)
-			QTimer::singleShot(50, this, [this, browser]() {
-				if (browser != cefBrowser)
-					return;
+			if (browser != cefBrowser)
+				return;
 
-				// Grab the browser window and put it in a container
-				container = QWidget::createWindowContainer(window, this);
-				QRect bounds = contentsRect();
-				container->resize(bounds.width(), bounds.height());
+			// Grab the browser window and put it in a container
+			// We'll actually show it once the browser is finished loading
+			cefWindow = QWindow::fromWinId((WId) windowHandle);
+			cefContainer = QWidget::createWindowContainer(cefWindow, this);
+			QRect bounds = contentsRect();
+			cefContainer->resize(bounds.width(), bounds.height());
 
-				if (!loading)
-					showContainer();
-			});
+			if (!loading) {
+				// Finished already
+				QueueCEFTask([this, browser]() {
+					if (browser != cefBrowser)
+						return;
+					nativeWindow->Show();
+				});
+				showContainer();
+			}
 		});
 	});
 
@@ -487,18 +492,30 @@ void QCefWidgetInternal::Init()
 		timer.stop();
 }
 
-void QCefWidgetInternal::showContainer()
+void QCefWidgetInternal::removeChildren()
 {
-	if (!container)
-		return;
-
 	QLayout *layout = this->layout();
 	QLayoutItem *child;
 	while ((child = layout->takeAt(0)) != nullptr) {
 		delete child->widget();
 		delete child;
 	}
-	layout->addWidget(container);
+}
+
+void QCefWidgetInternal::showContainer()
+{
+	if (!cefContainer)
+		return;
+
+	// Show the container after a delay,
+	// which will cover up a lot of stylesheet and loading blips
+	CefRefPtr<CefBrowser> browser = cefBrowser;
+	QTimer::singleShot(250, this, [this, browser]() {
+		if (cefBrowser != browser)
+			return;
+		removeChildren();
+		layout()->addWidget(cefContainer);
+	});
 }
 
 void QCefWidgetInternal::onLoadEnd()
@@ -508,10 +525,10 @@ void QCefWidgetInternal::onLoadEnd()
 
 	loading = false;
 
-	if (container)
-		QTimer::singleShot(0, this, [this]() {
-			QTimer::singleShot(250, this, &QCefWidgetInternal::showContainer);
-		});
+	if (cefContainer) {
+		nativeWindow->Show();
+		QTimer::singleShot(0, this, &QCefWidgetInternal::showContainer);
+	}
 }
 
 void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
@@ -577,13 +594,9 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	if (!cefBrowser) {
 		loading = true;
 
-		QLayout *layout = this->layout();
-		QLayoutItem *child;
-		while ((child = layout->takeAt(0)) != nullptr) {
-			delete child->widget();
-			delete child;
-		}
-		layout->addWidget(new ProgressWidget);
+		// Show the progress indicator until the browser is done loading
+		removeChildren();
+		layout()->addWidget(new ProgressWidget);
 
 		obs_browser_initialize();
 		connect(&timer, SIGNAL(timeout()), this, SLOT(Init()));
