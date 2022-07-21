@@ -470,21 +470,25 @@ void QCefWidgetInternal::Init()
 				return;
 
 			// Grab the browser window and put it in a container
-			// We'll actually show it once the browser is finished loading
 			cefWindow = QWindow::fromWinId((WId) windowHandle);
 			cefContainer = QWidget::createWindowContainer(cefWindow, this);
+			// Set the initial size, otherwise it looks glitchy at first
 			QRect bounds = contentsRect();
 			cefContainer->resize(bounds.width(), bounds.height());
+			// We'll make it visible after the browser is done loading
+			cefContainer->setVisible(false);
+			layout()->addWidget(cefContainer);
 
-			if (!loading) {
+			QueueCEFTask([this, browser]() {
+				if (browser != cefBrowser)
+					return;
+				// This won't show anything yet since the container isn't visible
+				nativeWindow->Show();
+			});
+
+			if (!loading)
 				// Finished already
-				QueueCEFTask([this, browser]() {
-					if (browser != cefBrowser)
-						return;
-					nativeWindow->Show();
-				});
 				showContainer();
-			}
 		});
 	});
 
@@ -513,8 +517,12 @@ void QCefWidgetInternal::showContainer()
 	QTimer::singleShot(250, this, [this, browser]() {
 		if (cefBrowser != browser)
 			return;
-		removeChildren();
-		layout()->addWidget(cefContainer);
+		// Dispose of the progress indicator
+		QLayoutItem *child = layout()->takeAt(0);
+		delete child->widget();
+		delete child;
+		// Show the CEF window
+		cefContainer->setVisible(true);
 	});
 }
 
