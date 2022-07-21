@@ -60,7 +60,7 @@ MODULE_EXPORT const char *obs_module_description(void)
 using namespace std;
 using namespace json11;
 
-static thread manager_thread;
+// static thread manager_thread;
 static bool manager_initialized = false;
 os_event_t *cef_started_event = nullptr;
 
@@ -338,6 +338,9 @@ static void BrowserInit(void)
 #ifdef USE_QT_LOOP
 	settings.external_message_pump = true;
 	settings.multi_threaded_message_loop = false;
+#else
+	// Let CEF use its own threaded loop (fixes input/Pango in recent CEF builds)
+	settings.multi_threaded_message_loop = true;
 #endif
 
 #if !defined(_WIN32) && !defined(__APPLE__)
@@ -431,7 +434,8 @@ extern "C" EXPORT void obs_browser_initialize(void)
 #ifdef USE_QT_LOOP
 		BrowserInit();
 #else
-		manager_thread = thread(BrowserManagerThread);
+		// manager_thread = thread(BrowserManagerThread);
+		BrowserInit();
 #endif
 	}
 }
@@ -769,12 +773,20 @@ void obs_module_unload(void)
 #ifdef USE_QT_LOOP
 	BrowserShutdown();
 #else
-	if (manager_thread.joinable()) {
-		while (!QueueCEFTask([]() { CefQuitMessageLoop(); }))
-			os_sleep_ms(5);
+	// if (manager_thread.joinable()) {
+	// 	while (!QueueCEFTask([]() { CefQuitMessageLoop(); }))
+	// 		os_sleep_ms(5);
 
-		manager_thread.join();
-	}
+	// 	manager_thread.join();
+	// }
+
+	// Shut down from CEF's event loop and wait for it to finish
+	volatile bool exiting = true;
+	QueueCEFTask([&]() {
+		BrowserShutdown();
+		exiting = false;
+	});
+	while (exiting) os_sleep_ms(1);
 #endif
 
 	os_event_destroy(cef_started_event);
