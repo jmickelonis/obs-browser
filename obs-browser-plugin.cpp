@@ -16,6 +16,8 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+#include <QGuiApplication>
+#include <QScreen>
 #include <obs-frontend-api.h>
 #include <util/threading.h>
 #include <util/platform.h>
@@ -306,6 +308,10 @@ static void BrowserInit(void)
 	struct obs_cmdline_args cmdline_args = obs_get_cmdline_args();
 	CefMainArgs args(cmdline_args.argc, cmdline_args.argv);
 #endif
+
+	// Make the pixel ratio available to sub-processes
+	qreal pixelRatio = QGuiApplication::primaryScreen()->devicePixelRatio();
+	setenv("OBS_PRIMARY_PIXEL_RATIO", std::to_string(pixelRatio).c_str(), true);
 
 	CefSettings settings;
 	settings.log_severity = LOGSEVERITY_DISABLE;

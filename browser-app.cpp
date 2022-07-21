@@ -22,6 +22,7 @@
 
 #include <QApplication>
 #include <QFileSystemWatcher>
+#include <QGuiApplication>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -61,6 +62,19 @@ void BrowserApp::OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar
 	registrar->AddCustomScheme("http",
 				   CEF_SCHEME_OPTION_STANDARD |
 					   CEF_SCHEME_OPTION_CORS_ENABLED);
+}
+
+static float parseEnvScale(const char *name, float defaultValue = 1.0)
+{
+	const char* value = std::getenv(name);
+	if (value) {
+		try {
+			return std::stof(value);
+		}
+		catch (std::invalid_argument &) { }
+		catch (std::out_of_range &) { }
+	}
+	return defaultValue;
 }
 
 void BrowserApp::OnBeforeChildProcessLaunch(
@@ -103,6 +117,22 @@ void BrowserApp::OnBeforeCommandLineProcessing(
 #ifdef __APPLE__
 	command_line->AppendSwitch("use-mock-keychain");
 #endif
+
+#ifdef _WIN32
+	// Windows handles per-monitor scaling by default
+	// Don't override that unless the user sets OBS_BROWSER_DOCK_SCALE
+	float defaultScale = -1;
+#else
+	// Other platforms don't handle scaling
+	// Set the scale factor based on DOCK_SCALE * PIXEL_RATIO
+	float defaultScale = 1.0;
+#endif
+	float scale = parseEnvScale("OBS_BROWSER_DOCK_SCALE", defaultScale);
+	if (scale > 0) {
+		scale *= parseEnvScale("OBS_PRIMARY_PIXEL_RATIO");
+		command_line->AppendSwitchWithValue(
+			"--force-device-scale-factor", std::to_string(scale).c_str());
+	}
 }
 
 /* Returns the full config path for the specified relative path.
