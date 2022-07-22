@@ -311,7 +311,7 @@ static void BrowserInit(void)
 
 	// Make the pixel ratio available to sub-processes
 	qreal pixelRatio = QGuiApplication::primaryScreen()->devicePixelRatio();
-	setenv("OBS_PRIMARY_PIXEL_RATIO", std::to_string(pixelRatio).c_str(), true);
+	qputenv("OBS_PRIMARY_PIXEL_RATIO", QVariant(pixelRatio).toByteArray());
 
 	CefSettings settings;
 	settings.log_severity = LOGSEVERITY_DISABLE;
