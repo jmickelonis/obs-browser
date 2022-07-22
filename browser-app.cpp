@@ -137,9 +137,12 @@ void BrowserApp::OnBeforeCommandLineProcessing(
 #endif
 	float scale = parseEnvScale("OBS_BROWSER_DOCK_SCALE", defaultScale);
 	if (scale > 0) {
-		scale *= parseEnvScale("OBS_PRIMARY_PIXEL_RATIO");
-		command_line->AppendSwitchWithValue(
-			"--force-device-scale-factor", std::to_string(scale).c_str());
+		float ratio = parseEnvScale("OBS_PRIMARY_PIXEL_RATIO", -1);
+		if (ratio > 0) {
+			scale *= ratio;
+			command_line->AppendSwitchWithValue(
+				"--force-device-scale-factor", std::to_string(scale).c_str());
+		}
 	}
 
 	command_line->AppendSwitch(
