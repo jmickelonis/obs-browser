@@ -88,6 +88,14 @@ void BrowserApp::OnBeforeChildProcessLaunch(
 #endif
 }
 
+/* Returns true if accelerated rendering should be enabled (this is the default).
+ */
+static bool shouldEnableGPU()
+{
+	const char *value = getenv("OBS_BROWSER_DOCK_ENABLE_GPU");
+	return value ? QVariant(value).toBool() : true;
+}
+
 void BrowserApp::OnBeforeCommandLineProcessing(
 	const CefString &, CefRefPtr<CefCommandLine> command_line)
 {
@@ -133,6 +141,9 @@ void BrowserApp::OnBeforeCommandLineProcessing(
 		command_line->AppendSwitchWithValue(
 			"--force-device-scale-factor", std::to_string(scale).c_str());
 	}
+
+	command_line->AppendSwitch(
+		shouldEnableGPU() ? "--enable-gpu" : "--disable-gpu");
 }
 
 /* Returns the full config path for the specified relative path.
