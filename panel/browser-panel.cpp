@@ -377,8 +377,6 @@ void QCefWidgetInternal::unsetToplevelXdndProxy()
 }
 #endif
 
-#include <iostream>
-
 // Instead of the past solution (letting CEF render to our widgets directly),
 // we let CEF create its own window, then grab it in a container so we can embed it.
 // This solves a lot of issues we were seeing before (visual glitches, docks popping
