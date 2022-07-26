@@ -3,6 +3,8 @@
 #include "cef-headers.hpp"
 #include "browser-app.hpp"
 
+#include <QStyle>
+#include <QStyleOption>
 #include <QWindow>
 #include <QApplication>
 
@@ -220,17 +222,20 @@ QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_,
 	: QCefWidget(parent), url(url_), rqc(rqc_)
 {
 	// setAttribute(Qt::WA_PaintOnScreen);
-	// setAttribute(Qt::WA_StaticContents);
 	// setAttribute(Qt::WA_NoSystemBackground);
-	// setAttribute(Qt::WA_OpaquePaintEvent);
 	// setAttribute(Qt::WA_DontCreateNativeAncestors);
 	// setAttribute(Qt::WA_NativeWindow);
+	setAttribute(Qt::WA_StaticContents);
+	setAttribute(Qt::WA_OpaquePaintEvent);
+	setAttribute(Qt::WA_StyledBackground);
 
 	setFocusPolicy(Qt::ClickFocus);
 
 	QGridLayout *layout = new QGridLayout();
 	layout->setContentsMargins(0, 0, 0, 0);
 	setLayout(layout);
+
+	updateMargins();
 }
 
 QCefWidgetInternal::~QCefWidgetInternal()
@@ -470,9 +475,13 @@ void QCefWidgetInternal::Init()
 			// Grab the browser window and put it in a container
 			cefWindow = QWindow::fromWinId((WId) windowHandle);
 			cefContainer = QWidget::createWindowContainer(cefWindow, this);
+			cefContainer->setAttribute(Qt::WA_StaticContents);
+			cefContainer->setAttribute(Qt::WA_OpaquePaintEvent);
+
 			// Set the initial size, otherwise it looks glitchy at first
 			QRect bounds = contentsRect();
 			cefContainer->resize(bounds.width(), bounds.height());
+
 			// We'll make it visible after the browser is done loading
 			cefContainer->setVisible(false);
 			layout()->addWidget(cefContainer);
@@ -520,7 +529,7 @@ void QCefWidgetInternal::showContainer()
 	// Show the container after a delay,
 	// which will cover up a lot of stylesheet and loading blips
 	CefRefPtr<CefBrowser> browser = cefBrowser;
-	QTimer::singleShot(250, this, [this, browser]() {
+	QTimer::singleShot(500, this, [this, browser]() {
 		if (cefBrowser != browser)
 			return;
 		// Dispose of the progress indicator
@@ -543,6 +552,25 @@ void QCefWidgetInternal::onLoadEnd()
 		nativeWindow->Show();
 		QTimer::singleShot(0, this, &QCefWidgetInternal::showContainer);
 	}
+}
+
+void QCefWidgetInternal::updateMargins()
+{
+	QStyleOption opt;
+	opt.initFrom(this);
+	opt.rect.setRect(0, 0, 0xffff, 0xffff);
+
+	QRect rect = style()->subElementRect(QStyle::SE_ShapedFrameContents, &opt, this);
+    if (rect.isValid()) {
+		setContentsMargins(
+		 	rect.left(),
+			rect.top(),
+			opt.rect.right() - rect.right(),
+			opt.rect.bottom() - rect.bottom());
+    }
+	else {
+		setContentsMargins(0, 0, 0, 0);
+    }
 }
 
 void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
@@ -619,10 +647,22 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	}
 }
 
-QPaintEngine *QCefWidgetInternal::paintEngine() const
+// QPaintEngine *QCefWidgetInternal::paintEngine() const
+// {
+// 	return nullptr;
+// }
+
+bool QCefWidgetInternal::event(QEvent *event)
 {
-	// return nullptr;
-	return QCefWidget::paintEngine();
+	switch (event->type()) {
+	case QEvent::StyleChange:
+		updateMargins();
+		break;
+	default:
+		break;
+	}
+
+	return QCefWidget::event(event);
 }
 
 void QCefWidgetInternal::setURL(const std::string &url_)

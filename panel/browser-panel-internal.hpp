@@ -78,7 +78,8 @@ public:
 
 	virtual void resizeEvent(QResizeEvent *event) override;
 	virtual void showEvent(QShowEvent *event) override;
-	virtual QPaintEngine *paintEngine() const override;
+	// virtual QPaintEngine *paintEngine() const override;
+	virtual bool event(QEvent *) override;
 
 	virtual void setURL(const std::string &url) override;
 	virtual void setStartupScript(const std::string &script) override;
@@ -96,6 +97,7 @@ private:
 	CefRefPtr<CefWindow> nativeWindow;
 	void removeChildren();
 	void showContainer();
+	void updateMargins();
 #ifdef __linux__
 	bool needsDeleteXdndProxy = true;
 	void unsetToplevelXdndProxy();
