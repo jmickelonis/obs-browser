@@ -229,8 +229,6 @@ QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_,
 	setAttribute(Qt::WA_OpaquePaintEvent);
 	setAttribute(Qt::WA_StyledBackground);
 
-	setFocusPolicy(Qt::ClickFocus);
-
 	QGridLayout *layout = new QGridLayout();
 	layout->setContentsMargins(0, 0, 0, 0);
 	setLayout(layout);
@@ -241,10 +239,13 @@ QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_,
 QCefWidgetInternal::~QCefWidgetInternal()
 {
 	loading = false;
+
+	if (cefWindow)
+		cefWindow->setParent(nullptr);
+
 	closeBrowser();
 
 	if (cefWindow) {
-		cefWindow->setParent(nullptr);
 		delete cefWindow;
 		cefWindow = nullptr;
 	}
@@ -264,17 +265,23 @@ void QCefWidgetInternal::closeBrowser()
 		if (browserClient)
 			browserClient->widget = nullptr;
 
-		// Close from CEF's event loop and wait for it to finish
-		volatile bool closing = true;
-		QueueCEFTask([&]() {
-			nativeWindow->Hide();
-			cefBrowser->GetHost()->CloseBrowser(true);
-			closing = false;
+		CefRefPtr<CefBrowser> browser = cefBrowser;
+		// Close from CEF's event loop
+		QueueCEFTask([browser]() {
+#ifdef _WIN32
+			HWND hwnd = (HWND)browser->GetHost()->GetWindowHandle();
+			if (hwnd)
+				DestroyWindow(hwnd);
+#else
+			CefBrowserView::GetForBrowser(browser)->GetWindow()->Hide();
+#endif
+			browser->GetHost()->CloseBrowser(true);
 		});
-		while (closing) os_sleep_ms(1);
 
 		cefBrowser = nullptr;
+#ifndef _WIN32
 		nativeWindow = nullptr;
+#endif
 
 		/* So you're probably wondering what's going on here.  If you
 		 * call CefBrowserHost::CloseBrowser, and it fails to unload
@@ -382,6 +389,7 @@ void QCefWidgetInternal::unsetToplevelXdndProxy()
 }
 #endif
 
+#ifndef _WIN32
 // Instead of the past solution (letting CEF render to our widgets directly),
 // we let CEF create its own window, then grab it in a container so we can embed it.
 // This solves a lot of issues we were seeing before (visual glitches, docks popping
@@ -441,6 +449,7 @@ private:
 	DISALLOW_COPY_AND_ASSIGN(BrowserWindowDelegate);
 
 };
+#endif
 
 void QCefWidgetInternal::Init()
 {
@@ -449,23 +458,34 @@ void QCefWidgetInternal::Init()
 		if (cefBrowser)
 			return;
 
-		// See comments in BrowserWindowDelegate!
-
 		CefBrowserSettings cefBrowserSettings;
 		cefBrowserSettings.background_color = CefColorSetARGB(0, 0, 0, 0);
+		CefRefPtr<QCefBrowserClient> browserClient =
+			new QCefBrowserClient(this, script, allowAllPopups_);
 
+#ifdef _WIN32
+		// Have to go with the "old" way for Windows
+		// Using the views framework, the native windows will not focus properly,
+		// and will not receive key events (can't type)
+		CefWindowInfo windowInfo;
+		windowInfo.style = WS_POPUP;
+		CefRefPtr<CefBrowser> browser = CefBrowserHost::CreateBrowserSync(
+			windowInfo,
+			browserClient, url, cefBrowserSettings, nullptr, rqc);
+		cefBrowser = browser;
+		auto windowHandle = cefBrowser->GetHost()->GetWindowHandle();
+#else
+		// See comments in BrowserWindowDelegate!
 		CefRefPtr<CefBrowserView> browserView = CefBrowserView::CreateBrowserView(
-			new QCefBrowserClient(this, script, allowAllPopups_),
-			url, cefBrowserSettings,
-			nullptr, rqc, nullptr);
+			browserClient, url, cefBrowserSettings, nullptr, rqc, nullptr);
 		browserView->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
 		nativeWindow = CefWindow::CreateTopLevelWindow(
 			new BrowserWindowDelegate(browserView));
-
 		CefRefPtr<CefBrowser> browser = browserView->GetBrowser();
 		cefBrowser = browser;
-
 		auto windowHandle = nativeWindow->GetWindowHandle();
+#endif
+
 		QTimer::singleShot(0, this, [this, browser, windowHandle]() {
 			// We're back in the Qt event loop
 
@@ -475,6 +495,7 @@ void QCefWidgetInternal::Init()
 			// Grab the browser window and put it in a container
 			cefWindow = QWindow::fromWinId((WId) windowHandle);
 			cefContainer = QWidget::createWindowContainer(cefWindow, this);
+			cefContainer->setFocusPolicy(Qt::ClickFocus);
 			cefContainer->setAttribute(Qt::WA_StaticContents);
 			cefContainer->setAttribute(Qt::WA_OpaquePaintEvent);
 
@@ -486,6 +507,7 @@ void QCefWidgetInternal::Init()
 			cefContainer->setVisible(false);
 			layout()->addWidget(cefContainer);
 
+#ifndef _WIN32
 			auto showNative = [this, browser]() {
 				QueueCEFTask([this, browser]() {
 					if (browser != cefBrowser)
@@ -494,11 +516,8 @@ void QCefWidgetInternal::Init()
 					nativeWindow->Show();
 				});
 			};
-#ifdef __linux__
 			// Delay this slightly on Linux or it doesn't grab the window properly
 			QTimer::singleShot(50, this, showNative);
-#else
-			showNative();
 #endif
 
 			if (!loading)
@@ -549,7 +568,9 @@ void QCefWidgetInternal::onLoadEnd()
 	loading = false;
 
 	if (cefContainer) {
+#ifndef _WIN32
 		nativeWindow->Show();
+#endif
 		QTimer::singleShot(0, this, &QCefWidgetInternal::showContainer);
 	}
 }

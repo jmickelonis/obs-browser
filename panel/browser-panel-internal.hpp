@@ -94,7 +94,9 @@ private:
 	volatile bool loading = false;
 	QPointer<QWindow> cefWindow;
 	QPointer<QWidget> cefContainer;
+#ifndef _WIN32
 	CefRefPtr<CefWindow> nativeWindow;
+#endif
 	void removeChildren();
 	void showContainer();
 	void updateMargins();
