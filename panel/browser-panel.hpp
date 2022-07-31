@@ -3,7 +3,7 @@
 #include <obs-module.h>
 #include <util/platform.h>
 #include <util/util.hpp>
-#include <QFrame>
+#include <QWidget>
 
 #include <functional>
 #include <string>
