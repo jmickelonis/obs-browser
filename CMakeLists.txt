@@ -86,7 +86,7 @@ target_sources(
 target_include_directories(obs-browser PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/deps
                                                ${CMAKE_BINARY_DIR}/config)
 
-target_link_libraries(obs-browser PRIVATE OBS::libobs OBS::frontend-api)
+target_link_libraries(obs-browser PRIVATE OBS::frontend-api OBS::libobs Qt::Widgets)
 
 target_compile_features(obs-browser PRIVATE cxx_std_17)
 
@@ -111,7 +111,7 @@ if(NOT OS_MACOS OR ENABLE_BROWSER_LEGACY)
             browser-app.cpp browser-app.hpp deps/json11/json11.cpp
             deps/json11/json11.hpp)
 
-  target_link_libraries(obs-browser-page PRIVATE CEF::Library)
+  target_link_libraries(obs-browser-page PRIVATE CEF::Library OBS::libobs Qt::Widgets)
 
   target_include_directories(
     obs-browser-page
@@ -228,7 +228,7 @@ elseif(OS_MACOS)
               obs-browser-page/obs-browser-page-main.cpp cef-headers.hpp
               deps/json11/json11.cpp deps/json11/json11.hpp)
 
-    target_link_libraries(${_HELPER_TARGET} PRIVATE CEF::Wrapper)
+    target_link_libraries(${_HELPER_TARGET} PRIVATE CEF::Wrapper OBS::libobs Qt::Widgets)
 
     target_include_directories(
       ${_HELPER_TARGET}
