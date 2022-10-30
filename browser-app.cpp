@@ -62,12 +62,20 @@ static float parseEnvScale(const char *name, float defaultValue = 1.0)
 	return defaultValue;
 }
 
-/* Returns true if accelerated rendering should be enabled (this is the default).
+/* Returns true if accelerated rendering should be enabled.
  */
 static bool shouldEnableGPU()
 {
 	const char *value = getenv("OBS_BROWSER_DOCK_ENABLE_GPU");
-	return value ? QVariant(value).toBool() : true;
+	if (value)
+		return QVariant(value).toBool();
+#if defined(_WIN32)
+	// Only enable by default on Windows for now.
+	// Have seen some GPU crashes on Linux.
+	return true;
+#else
+	return false;
+#endif
 }
 
 /* Returns the contents of the specified CSS file.
