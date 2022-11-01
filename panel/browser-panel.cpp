@@ -266,7 +266,7 @@ void QCefWidgetInternal::closeBrowser()
 			if (hwnd)
 				DestroyWindow(hwnd);
 #else
-			CefBrowserView::GetForBrowser(browser)->GetWindow()->Hide();
+			CefBrowserView::GetForBrowser(browser)->GetWindow()->Close();
 #endif
 			browser->GetHost()->CloseBrowser(true);
 		});
