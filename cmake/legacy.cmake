@@ -98,7 +98,7 @@ if(NOT OS_MACOS OR ENABLE_BROWSER_LEGACY)
   target_sources(obs-browser-page PRIVATE cef-headers.hpp obs-browser-page/obs-browser-page-main.cpp browser-app.cpp
                                           browser-app.hpp deps/json11/json11.cpp deps/json11/json11.hpp)
 
-  target_link_libraries(obs-browser-page PRIVATE CEF::Library)
+  target_link_libraries(obs-browser-page PRIVATE CEF::Library OBS::libobs Qt::Widgets)
 
   target_include_directories(obs-browser-page PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/deps
                                                       ${CMAKE_CURRENT_SOURCE_DIR}/obs-browser-page)
