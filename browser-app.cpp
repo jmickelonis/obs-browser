@@ -115,9 +115,25 @@ void BrowserApp::OnBeforeChildProcessLaunch(
 #endif
 }
 
+/* Returns true if accelerated rendering should be enabled.
+ */
+static bool ShouldEnableGPU()
+{
+	const char *value = getenv("OBS_BROWSER_DOCK_ENABLE_GPU");
+	return value ? QVariant(value).toBool() : true;
+}
+
 void BrowserApp::OnBeforeCommandLineProcessing(
 	const CefString &, CefRefPtr<CefCommandLine> command_line)
 {
+	if (!command_line->HasSwitch("enable-gpu")
+			&& !command_line->HasSwitch("disable-gpu")) {
+		// If a switch wasn't explicity provided,
+		// enable or disable acceleration according to the environment variable.
+		command_line->AppendSwitch(
+			ShouldEnableGPU() ? "--enable-gpu" : "--disable-gpu");
+	}
+
 	if (!shared_texture_available) {
 		bool enableGPU = command_line->HasSwitch("enable-gpu");
 		CefString type = command_line->GetSwitchValue("type");
