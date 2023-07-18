@@ -8,6 +8,10 @@
 #include <vector>
 #include <mutex>
 
+#include <QPainterPath>
+#include <QPropertyAnimation>
+#include "include/views/cef_window.h"
+
 struct PopupWhitelistInfo {
 	std::string url;
 	QPointer<QObject> obj;
@@ -24,6 +28,41 @@ extern std::vector<PopupWhitelistInfo> forced_popups;
 
 /* ------------------------------------------------------------------------- */
 
+/* Shows that a browser panel is loading, and covers up any graphical blips
+   until the content is completely ready. */
+class ProgressWidget : public QWidget
+{
+	Q_OBJECT
+    Q_PROPERTY(qreal angle READ getAngle WRITE setAngle)
+
+public:
+
+	static const int thickness = 10;
+
+	static const int w = 50;
+	static const int h = 50;
+
+	ProgressWidget(QWidget *parent = nullptr);
+	~ProgressWidget();
+
+	qreal getAngle();
+	void setAngle(qreal angle);
+
+	virtual QSize sizeHint() const override;
+
+protected:
+
+	virtual bool event(QEvent *) override;
+	virtual void paintEvent(QPaintEvent *) override;
+
+private:
+
+	QPropertyAnimation *animation;
+	QConicalGradient gradient;
+	QPainterPath path;
+
+};
+
 class QCefWidgetInternal : public QCefWidget {
 	Q_OBJECT
 
@@ -33,19 +72,19 @@ public:
 	~QCefWidgetInternal();
 
 	CefRefPtr<CefBrowser> cefBrowser;
+#ifndef _WIN32
+	CefRefPtr<CefWindow> cefWindow;
+#endif
 	std::string url;
 	std::string script;
 	CefRefPtr<CefRequestContext> rqc;
 	QTimer timer;
-#ifndef __APPLE__
 	QPointer<QWindow> window;
 	QPointer<QWidget> container;
-#endif
 	bool allowAllPopups_ = false;
 
-	virtual void resizeEvent(QResizeEvent *event) override;
+	virtual bool event(QEvent *) override;
 	virtual void showEvent(QShowEvent *event) override;
-	virtual QPaintEngine *paintEngine() const override;
 
 	virtual void setURL(const std::string &url) override;
 	virtual void setStartupScript(const std::string &script) override;
@@ -54,14 +93,14 @@ public:
 	virtual void reloadPage() override;
 	virtual bool zoomPage(int direction) override;
 
-	void Resize();
-
-#ifdef __linux__
-private:
-	bool needsDeleteXdndProxy = true;
-	void unsetToplevelXdndProxy();
-#endif
+	void onLoadEnd();
 
 public slots:
 	void Init();
+
+private:
+	volatile bool loading = false;
+	void removeChildren();
+	void showContainer();
+	void updateMargins();
 };
