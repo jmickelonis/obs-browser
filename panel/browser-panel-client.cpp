@@ -404,6 +404,15 @@ void QCefBrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>,
 	if (!frame->IsMain())
 		return;
 
+	// Attach the url to the body element,
+	// so CSS can query it (data-url attribute)
+	std::string encodedURL = CefURIEncode(frame->GetURL(), false).ToString();
+	std::string s =
+		"var body = document.querySelector('body');"
+		"if (body)"
+		"	body.dataset.url = decodeURIComponent(\"" + encodedURL + "\");";
+	frame->ExecuteJavaScript(s, "", 0);
+
 	if (!script.empty())
 		frame->ExecuteJavaScript(script, CefString(), 0);
 
