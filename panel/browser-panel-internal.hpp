@@ -37,7 +37,7 @@ class ProgressWidget : public QWidget
 
 public:
 
-	static const int thickness = 10;
+	static const int thickness = 5;
 
 	static const int w = 50;
 	static const int h = 50;
