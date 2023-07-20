@@ -558,7 +558,7 @@ void QCefWidgetInternal::showContainer()
 	// Show the container after a delay,
 	// which will cover up a lot of stylesheet and loading blips
 	CefRefPtr<CefBrowser> browser = cefBrowser;
-	QTimer::singleShot(250, this, [this, browser]() {
+	QTimer::singleShot(500, this, [this, browser]() {
 		if (cefBrowser != browser)
 			return;
 		// Dispose of the progress indicator
