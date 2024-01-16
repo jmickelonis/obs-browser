@@ -674,6 +674,9 @@ bool BrowserClient::OnConsoleMessage(CefRefPtr<CefBrowser>,
 				     const CefString &message,
 				     const CefString &source, int line)
 {
+	if (!valid())
+		return false;
+
 	int errorLevel = LOG_INFO;
 	const char *code = "Info";
 	switch (level) {
