@@ -20,6 +20,8 @@
 #include "browser-version.h"
 #include <nlohmann/json.hpp>
 
+#include <QApplication>
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -69,6 +71,16 @@ void BrowserApp::OnBeforeChildProcessLaunch(
 void BrowserApp::OnBeforeCommandLineProcessing(
 	const CefString &, CefRefPtr<CefCommandLine> command_line)
 {
+	// If a switch wasn't explicity provided,
+	// enable or disable acceleration according to the environment.
+	if (!command_line->HasSwitch("enable-gpu") &&
+	    !command_line->HasSwitch("disable-gpu")) {
+		const char *s = getenv("OBS_BROWSER_ENABLE_GPU");
+		bool b = s ? QVariant(s).toBool() : true;
+		command_line->AppendSwitch(b ? "--enable-gpu"
+					     : "--disable-gpu");
+	}
+
 	if (!shared_texture_available) {
 		bool enableGPU = command_line->HasSwitch("enable-gpu");
 		CefString type = command_line->GetSwitchValue("type");
