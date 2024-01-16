@@ -178,6 +178,9 @@ void QCefBrowserClient::OnLoadError(CefRefPtr<CefBrowser> browser,
 	dstr_free(&html);
 	bfree(path);
 	bfree(errorPage);
+
+	if (widget)
+		widget->onLoadEnd();
 }
 
 /* CefLifeSpanHandler */
@@ -420,6 +423,9 @@ void QCefBrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>,
 	script2 += "'OBS browser docks cannot be closed using JavaScript.'";
 	script2 += ");";
 	frame->ExecuteJavaScript(script2, "", 0);
+
+	if (widget)
+		widget->onLoadEnd();
 }
 
 bool QCefBrowserClient::OnJSDialog(CefRefPtr<CefBrowser>, const CefString &,
