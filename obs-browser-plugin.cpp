@@ -312,7 +312,7 @@ static void BrowserInit(void)
 	BPtr<char> log_path = obs_module_config_path("debug.log");
 	BPtr<char> log_path_abs = os_get_abs_path_ptr(log_path);
 	CefString(&settings.log_file) = log_path_abs;
-	settings.windowless_rendering_enabled = true;
+	//settings.windowless_rendering_enabled = true;
 	settings.no_sandbox = true;
 
 	uint32_t obs_ver = obs_get_version();
