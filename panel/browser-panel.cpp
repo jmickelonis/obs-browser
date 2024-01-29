@@ -246,8 +246,14 @@ QCefWidgetInternal::~QCefWidgetInternal()
 	if (window)
 		window->setParent(nullptr);
 	closeBrowser();
-	window = nullptr;
-	container = nullptr;
+	if (window) {
+		window->close();
+		window = nullptr;
+	}
+	if (container) {
+		container->close();
+		container = nullptr;
+	}
 	removeChildren();
 }
 
@@ -323,15 +329,6 @@ public:
 		view = nullptr;
 	}
 
-	bool CanClose(CefRefPtr<CefWindow> window) override
-	{
-		if (view)
-			// Removing the view before closing
-			// helps prevent crashes when switching profiles
-			window->RemoveChildView(view);
-		return true;
-	}
-
 private:
 	CefRefPtr<CefView> view;
 
@@ -389,7 +386,7 @@ void QCefWidgetInternal::Init()
 			// Grab the browser window and put it in a container
 			window = QWindow::fromWinId((WId)windowHandle);
 			container =
-				QWidget::createWindowContainer(window, this);
+				QWidget::createWindowContainer(window);
 
 			// Set the initial size, otherwise it looks glitchy at first
 			QRect bounds = contentsRect();
