@@ -256,7 +256,12 @@ void BrowserApp::ExecuteJSFunction(CefRefPtr<CefBrowser> browser,
 	std::vector<CefString> names;
 	browser->GetFrameNames(names);
 	for (auto &name : names) {
-		CefRefPtr<CefFrame> frame = browser->GetFrame(name);
+		CefRefPtr<CefFrame> frame =
+#if CHROME_VERSION_BUILD >= 6261
+			browser->GetFrameByName(name);
+#else
+			browser->GetFrame(name);
+#endif
 		CefRefPtr<CefV8Context> context = frame->GetV8Context();
 
 		context->Enter();
@@ -455,7 +460,12 @@ bool BrowserApp::OnProcessMessageReceived(CefRefPtr<CefBrowser> browser,
 		std::vector<CefString> names;
 		browser->GetFrameNames(names);
 		for (auto &name : names) {
-			CefRefPtr<CefFrame> frame = browser->GetFrame(name);
+			CefRefPtr<CefFrame> frame =
+#if CHROME_VERSION_BUILD >= 6261
+				browser->GetFrameByName(name);
+#else
+				browser->GetFrame(name);
+#endif
 			CefRefPtr<CefV8Context> context = frame->GetV8Context();
 
 			context->Enter();
