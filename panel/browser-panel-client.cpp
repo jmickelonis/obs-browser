@@ -277,7 +277,7 @@ void QCefBrowserClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
 	model->SetChecked(MENU_ITEM_MUTE, browser->GetHost()->IsAudioMuted());
 }
 
-#if defined(_WIN32)
+#if not defined(__APPLE__)
 bool QCefBrowserClient::RunContextMenu(
 	CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>,
 	CefRefPtr<CefContextMenuParams>, CefRefPtr<CefMenuModel> model,
