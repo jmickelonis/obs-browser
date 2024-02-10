@@ -60,7 +60,6 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 using namespace std;
 
-static thread manager_thread;
 static bool manager_initialized = false;
 os_event_t *cef_started_event = nullptr;
 
@@ -313,7 +312,7 @@ static void BrowserInit(void)
 	BPtr<char> log_path = obs_module_config_path("debug.log");
 	BPtr<char> log_path_abs = os_get_abs_path_ptr(log_path);
 	CefString(&settings.log_file) = log_path_abs;
-	settings.windowless_rendering_enabled = true;
+	settings.windowless_rendering_enabled = false;
 	settings.no_sandbox = true;
 
 	uint32_t obs_ver = obs_get_version();
@@ -342,6 +341,9 @@ static void BrowserInit(void)
 #ifdef ENABLE_BROWSER_QT_LOOP
 	settings.external_message_pump = true;
 	settings.multi_threaded_message_loop = false;
+#else
+	// Let CEF use its own threaded loop
+	settings.multi_threaded_message_loop = true;
 #endif
 
 #if !defined(_WIN32) && !defined(__APPLE__)
@@ -441,13 +443,8 @@ static void BrowserManagerThread(void)
 
 extern "C" EXPORT void obs_browser_initialize(void)
 {
-	if (!os_atomic_set_bool(&manager_initialized, true)) {
-#ifdef ENABLE_BROWSER_QT_LOOP
+	if (!os_atomic_set_bool(&manager_initialized, true))
 		BrowserInit();
-#else
-		manager_thread = thread(BrowserManagerThread);
-#endif
-	}
 }
 
 void RegisterBrowserSource()
@@ -748,9 +745,12 @@ bool obs_module_load(void)
 
 	os_event_init(&cef_started_event, OS_EVENT_TYPE_MANUAL);
 
-#ifdef _WIN32
+#if defined(_WIN32) && CHROME_VERSION_BUILD < 5615
 	/* CefEnableHighDPISupport doesn't do anything on OS other than Windows. Would also crash macOS at this point as CEF is not directly linked */
 	CefEnableHighDPISupport();
+#endif
+
+#ifdef _WIN32
 	EnumAdapterCount();
 #else
 #if defined(__APPLE__) && !defined(ENABLE_BROWSER_LEGACY)
@@ -818,12 +818,9 @@ void obs_module_unload(void)
 #ifdef ENABLE_BROWSER_QT_LOOP
 	BrowserShutdown();
 #else
-	if (manager_thread.joinable()) {
-		while (!QueueCEFTask([]() { CefQuitMessageLoop(); }))
-			os_sleep_ms(5);
-
-		manager_thread.join();
-	}
+	// Shut down from CEF's event loop
+	while (!QueueCEFTask([]() { BrowserShutdown(); }))
+		os_sleep_ms(5);
 #endif
 
 	os_event_destroy(cef_started_event);

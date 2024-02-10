@@ -178,6 +178,9 @@ void QCefBrowserClient::OnLoadError(CefRefPtr<CefBrowser> browser,
 	dstr_free(&html);
 	bfree(path);
 	bfree(errorPage);
+
+	if (widget)
+		widget->onLoadEnd();
 }
 
 /* CefLifeSpanHandler */
@@ -274,7 +277,7 @@ void QCefBrowserClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
 	model->SetChecked(MENU_ITEM_MUTE, browser->GetHost()->IsAudioMuted());
 }
 
-#if defined(_WIN32)
+#if not defined(__APPLE__)
 bool QCefBrowserClient::RunContextMenu(
 	CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>,
 	CefRefPtr<CefContextMenuParams>, CefRefPtr<CefMenuModel> model,
@@ -414,10 +417,22 @@ void QCefBrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>,
 	if (!frame->IsMain())
 		return;
 
+	// Attach the url to the body element, so CSS can query it (data-url attribute)
+	std::string encodedURL =
+		CefURIEncode(frame->GetURL(), false).ToString();
+	std::string s = "var body = document.querySelector('body');"
+			"if (body)"
+			"	body.dataset.url = decodeURIComponent(\"" +
+			encodedURL + "\");";
+	frame->ExecuteJavaScript(s, "", 0);
+
 	if (widget && !widget->script.empty())
 		frame->ExecuteJavaScript(widget->script, CefString(), 0);
 	else if (!script.empty())
 		frame->ExecuteJavaScript(script, CefString(), 0);
+
+	if (widget)
+		widget->onLoadEnd();
 }
 
 bool QCefBrowserClient::OnJSDialog(CefRefPtr<CefBrowser>, const CefString &,
