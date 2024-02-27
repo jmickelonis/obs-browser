@@ -246,48 +246,42 @@ QCefWidgetInternal::~QCefWidgetInternal()
 	if (window)
 		window->setParent(nullptr);
 	closeBrowser();
-	if (window) {
-		window->close();
-		window = nullptr;
-	}
-	if (container) {
-		container->close();
-		container = nullptr;
-	}
+	delete window;
+	window = nullptr;
+	delete container;
+	container = nullptr;
 	removeChildren();
 }
 
 void QCefWidgetInternal::closeBrowser()
 {
 	if (!!cefBrowser) {
-		CefRefPtr<CefClient> client =
-			cefBrowser->GetHost()->GetClient();
-		QCefBrowserClient *browserClient =
-			reinterpret_cast<QCefBrowserClient *>(client.get());
-
-		if (browserClient)
-			browserClient->widget = nullptr;
-
-		CefRefPtr<CefBrowser> browser = cefBrowser;
-
 		// Close from CEF's event loop
+		QueueCEFTask([&]() {
+			CefRefPtr<CefBrowserHost> browserHost =
+				cefBrowser->GetHost();
+			CefRefPtr<CefClient> client = browserHost->GetClient();
+			QCefBrowserClient *browserClient =
+				reinterpret_cast<QCefBrowserClient *>(
+					client.get());
+			if (browserClient)
+				browserClient->widget = nullptr;
+
 #ifdef _WIN32
-		QueueCEFTask([browser]() {
 			HWND hwnd = (HWND)browser->GetHost()->GetWindowHandle();
 			if (hwnd)
 				DestroyWindow(hwnd);
 #else
-		CefRefPtr<CefWindow> window = cefWindow;
-		QueueCEFTask([browser, window]() {
-			window->Close();
+			cefWindow->Close();
+			cefWindow = nullptr;
 #endif
-			browser->GetHost()->CloseBrowser(true);
+
+			browserHost->CloseBrowser(true);
 		});
 
+		while (cefBrowser->IsValid())
+			os_sleep_ms(50);
 		cefBrowser = nullptr;
-#ifndef _WIN32
-		cefWindow = nullptr;
-#endif
 	}
 }
 
@@ -385,8 +379,7 @@ void QCefWidgetInternal::Init()
 
 			// Grab the browser window and put it in a container
 			window = QWindow::fromWinId((WId)windowHandle);
-			container =
-				QWidget::createWindowContainer(window);
+			container = QWidget::createWindowContainer(window);
 
 			// Set the initial size, otherwise it looks glitchy at first
 			QRect bounds = contentsRect();
@@ -395,19 +388,6 @@ void QCefWidgetInternal::Init()
 			// We'll make it visible after the browser is done loading
 			container->setVisible(false);
 			layout()->addWidget(container);
-
-#ifndef _WIN32
-			auto show = [this, browser]() {
-				QueueCEFTask([this, browser]() {
-					if (browser != cefBrowser)
-						return;
-					// This won't show anything yet since the container isn't visible
-					cefWindow->Show();
-				});
-			};
-			// Delay this slightly or it might not grab the window properly
-			QTimer::singleShot(50, this, show);
-#endif
 
 			if (!loading)
 				// Finished already
