@@ -819,8 +819,7 @@ void obs_module_unload(void)
 	BrowserShutdown();
 #else
 	// Shut down from CEF's event loop
-	while (!QueueCEFTask([]() { BrowserShutdown(); }))
-		os_sleep_ms(5);
+	QueueCEFTask([]() { BrowserShutdown(); });
 #endif
 
 	os_event_destroy(cef_started_event);
