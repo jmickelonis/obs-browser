@@ -90,7 +90,9 @@ struct QCefCookieManagerInternal : QCefCookieManager {
 		BPtr<char> path = os_get_abs_path_ptr(rpath.Get());
 
 		CefRequestContextSettings settings;
+#if CHROME_VERSION_BUILD <= 6533
 		settings.persist_user_preferences = 1;
+#endif
 		CefString(&settings.cache_path) = path.Get();
 		rc = CefRequestContext::CreateContext(
 			settings, CefRefPtr<CefRequestContextHandler>());
@@ -113,7 +115,9 @@ struct QCefCookieManagerInternal : QCefCookieManager {
 		BPtr<char> path = os_get_abs_path_ptr(rpath.Get());
 
 		CefRequestContextSettings settings;
+#if CHROME_VERSION_BUILD <= 6533
 		settings.persist_user_preferences = 1;
+#endif
 		CefString(&settings.cache_path) = storage_path;
 		rc = CefRequestContext::CreateContext(
 			settings, CefRefPtr<CefRequestContextHandler>());
@@ -349,6 +353,11 @@ void QCefWidgetInternal::Init()
 		// and will not receive key events (can't type)
 		CefWindowInfo windowInfo;
 		windowInfo.style = WS_POPUP;
+
+#if CHROME_VERSION_BUILD >= 6533
+			windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
+#endif
+
 		CefRefPtr<CefBrowser> browser =
 			CefBrowserHost::CreateBrowserSync(windowInfo,
 							  browserClient, url,
