@@ -220,12 +220,15 @@ elseif(OS_MACOS)
 
 elseif(OS_POSIX)
   find_package(X11 REQUIRED)
+  find_package(Libdrm REQUIRED)
 
-  target_link_libraries(obs-browser PRIVATE CEF::Wrapper CEF::Library X11::X11)
+  target_link_libraries(obs-browser PRIVATE CEF::Wrapper CEF::Library X11::X11 Libdrm::Libdrm)
 
   get_target_property(_CEF_DIRECTORY CEF::Library INTERFACE_LINK_DIRECTORIES)
 
   set_target_properties(obs-browser PROPERTIES BUILD_RPATH "$ORIGIN/")
+
+  target_sources(obs-browser PRIVATE drm-format.cpp drm-format.hpp)
 
   set_target_properties(obs-browser-page PROPERTIES BUILD_RPATH "$ORIGIN/")
 
