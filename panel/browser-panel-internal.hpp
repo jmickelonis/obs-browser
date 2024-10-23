@@ -84,10 +84,14 @@ public:
 	virtual bool zoomPage(int direction) override;
 	virtual void executeJavaScript(const std::string &script) override;
 
+	void CloseSafely();
 	void onLoadEnd();
 
 public slots:
 	void Init();
+
+signals:
+	void readyToClose();
 
 private:
 	volatile bool loading = false;

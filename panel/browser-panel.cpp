@@ -248,17 +248,17 @@ QCefWidgetInternal::~QCefWidgetInternal()
 
 void QCefWidgetInternal::closeBrowser()
 {
-	if (!!cefBrowser) {
+	CefRefPtr<CefBrowser> browser = cefBrowser;
+	if (!!browser) {
+		removeChildren();
+
 		// Close from CEF's event loop
 		QueueCEFTask([&]() {
-			CefRefPtr<CefBrowserHost> browserHost = cefBrowser->GetHost();
-			CefRefPtr<CefClient> client = browserHost->GetClient();
-			QCefBrowserClient *browserClient = reinterpret_cast<QCefBrowserClient *>(client.get());
-			if (browserClient)
-				browserClient->widget = nullptr;
+			cefBrowser = nullptr;
+			CefRefPtr<CefBrowserHost> browserHost = browser->GetHost();
 
 #ifdef _WIN32
-			HWND hwnd = (HWND)browser->GetHost()->GetWindowHandle();
+			HWND hwnd = (HWND)browserHost->GetWindowHandle();
 			if (hwnd)
 				DestroyWindow(hwnd);
 #else
@@ -269,8 +269,11 @@ void QCefWidgetInternal::closeBrowser()
 			browserHost->CloseBrowser(true);
 		});
 
-		while (cefBrowser->IsValid())
-			os_sleep_ms(50);
+		QEventLoop loop;
+		connect(this, &QCefWidgetInternal::readyToClose, &loop, &QEventLoop::quit);
+		QTimer::singleShot(1000, &loop, &QEventLoop::quit);
+		loop.exec();
+
 		cefBrowser = nullptr;
 	}
 }
@@ -361,6 +364,10 @@ void QCefWidgetInternal::Init()
 			window = QWindow::fromWinId((WId)windowHandle);
 			container = QWidget::createWindowContainer(window);
 
+			// This stops the animations/blips when closing later
+			window->setOpacity(0);
+			window->setFlags(window->flags() | Qt::BypassWindowManagerHint);
+
 			// Set the initial size, otherwise it looks glitchy at first
 			QRect bounds = contentsRect();
 			container->resize(bounds.width(), bounds.height());
@@ -390,6 +397,11 @@ bool QCefWidgetInternal::event(QEvent *event)
 	}
 
 	return QCefWidget::event(event);
+}
+
+void QCefWidgetInternal::CloseSafely()
+{
+	emit readyToClose();
 }
 
 void QCefWidgetInternal::showEvent(QShowEvent *event)
@@ -488,12 +500,7 @@ bool QCefWidgetInternal::zoomPage(int direction)
 
 void QCefWidgetInternal::removeChildren()
 {
-	QLayout *layout = this->layout();
-	QLayoutItem *child;
-	while ((child = layout->takeAt(0)) != nullptr) {
-		delete child->widget();
-		delete child;
-	}
+	qDeleteAll(findChildren<QWidget*>("", Qt::FindDirectChildrenOnly));
 }
 
 void QCefWidgetInternal::showContainer()
@@ -507,9 +514,7 @@ void QCefWidgetInternal::showContainer()
 		if (cefBrowser != browser)
 			return;
 		// Dispose of the progress indicator
-		QLayoutItem *child = layout()->takeAt(0);
-		delete child->widget();
-		delete child;
+		delete layout()->takeAt(0);
 		// Show the CEF window
 		container->setVisible(true);
 	});
