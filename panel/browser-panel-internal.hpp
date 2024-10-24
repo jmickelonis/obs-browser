@@ -7,9 +7,11 @@
 
 #include <vector>
 #include <mutex>
+#include <condition_variable>
 
 #include <QPainterPath>
 #include <QPropertyAnimation>
+#include <QResizeEvent>
 #include "include/views/cef_window.h"
 
 struct PopupWhitelistInfo {
@@ -56,6 +58,7 @@ private:
 
 class QCefWidgetInternal : public QCefWidget {
 	Q_OBJECT
+	friend class QCefBrowserClient;
 
 public:
 	QCefWidgetInternal(QWidget *parent, const std::string &url, CefRefPtr<CefRequestContext> rqc);
@@ -68,13 +71,13 @@ public:
 	std::string url;
 	std::string script;
 	CefRefPtr<CefRequestContext> rqc;
-	QTimer timer;
 	QPointer<QWindow> window;
 	QPointer<QWidget> container;
 	bool allowAllPopups_ = false;
 
 	virtual bool event(QEvent *) override;
 	virtual void showEvent(QShowEvent *event) override;
+	virtual void resizeEvent(QResizeEvent *event) override;
 
 	virtual void setURL(const std::string &url) override;
 	virtual void setStartupScript(const std::string &script) override;
@@ -84,18 +87,19 @@ public:
 	virtual bool zoomPage(int direction) override;
 	virtual void executeJavaScript(const std::string &script) override;
 
-	void CloseSafely();
-	void onLoadEnd();
-
-public slots:
-	void Init();
-
-signals:
-	void readyToClose();
-
 private:
-	volatile bool loading = false;
+
+	enum State { Closing = -1, Initial, CreatingBrowser, Loading, Loaded };
+	volatile State state = State::Initial;
+	unsigned long cefWindowHandle;
+
+	std::mutex m;
+	std::condition_variable cv;
+	bool cefReady = false;
+	bool qtReady = false;
+
 	void removeChildren();
 	void showContainer();
 	void updateMargins();
+	void onLoadEnd();
 };

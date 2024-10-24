@@ -57,8 +57,6 @@ public:
 				   CefRefPtr<CefClient> &client, CefBrowserSettings &settings,
 				   CefRefPtr<CefDictionaryValue> &extra_info, bool *no_javascript_access) override;
 
-	virtual void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
-
 	/* CefFocusHandler */
 	virtual bool OnSetFocus(CefRefPtr<CefBrowser> browser, CefFocusHandler::FocusSource source) override;
 
