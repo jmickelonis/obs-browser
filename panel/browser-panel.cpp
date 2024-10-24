@@ -247,6 +247,11 @@ void QCefWidgetInternal::closeBrowser()
 	}
 
 	state = State::Closing;
+	if (showTimer) {
+		showTimer->stop();
+		showTimer = nullptr;
+	}
+
 	qtReady = false;
 	cefReady = false;
 
@@ -551,7 +556,10 @@ void QCefWidgetInternal::removeChildren()
 void QCefWidgetInternal::showContainer()
 {
 	// Show the container after a delay to cover up a lot of loading blips
-	QTimer::singleShot(250, this, [this]() {
+	showTimer = new QTimer();
+	showTimer->setInterval(250);
+	showTimer->setSingleShot(true);
+	connect(showTimer, &QTimer::timeout, this, [this]() {
 		if (state != State::Loaded)
 			return;
 		// Dispose of the progress indicator
@@ -561,6 +569,7 @@ void QCefWidgetInternal::showContainer()
 		// Show the CEF window
 		container->setVisible(true);
 	});
+	showTimer->start();
 }
 
 void QCefWidgetInternal::updateMargins()

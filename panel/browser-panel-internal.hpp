@@ -92,6 +92,7 @@ private:
 	enum State { Closing = -1, Initial, CreatingBrowser, Loading, Loaded };
 	volatile State state = State::Initial;
 	unsigned long cefWindowHandle;
+	QTimer *showTimer = nullptr;
 
 	std::mutex m;
 	std::condition_variable cv;
