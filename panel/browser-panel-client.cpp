@@ -20,6 +20,8 @@
 #include <X11/Xlib.h>
 #endif
 
+#include "include/views/cef_browser_view.h"
+
 #define MENU_ITEM_DEVTOOLS MENU_ID_CUSTOM_FIRST
 #define MENU_ITEM_MUTE MENU_ID_CUSTOM_FIRST + 1
 #define MENU_ITEM_ZOOM_IN MENU_ID_CUSTOM_FIRST + 2
@@ -88,6 +90,17 @@ void QCefBrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefSt
 		std::wstring str_title = newTitle;
 		SetWindowTextW((HWND)handl, str_title.c_str());
 #elif defined(__linux__)
+		// Try using the Views framework to set the title
+		CefRefPtr<CefBrowserView> browserView = CefBrowserView::GetForBrowser(browser);
+		if (browserView) {
+			CefRefPtr<CefWindow> window = browserView->GetWindow();
+			if (window) {
+				window->SetTitle(newTitle);
+				return;
+			}
+		}
+
+		// Fall back to using xlib
 		CefWindowHandle handl = browser->GetHost()->GetWindowHandle();
 		XStoreName(cef_get_xdisplay(), handl, newTitle.ToString().c_str());
 #endif
