@@ -188,10 +188,17 @@ void QCefBrowserClient::OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<Cef
 }
 
 /* CefLifeSpanHandler */
+#if CHROME_VERSION_BUILD >= 6778
+bool QCefBrowserClient::OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int, const CefString &target_url,
+				      const CefString &, CefLifeSpanHandler::WindowOpenDisposition, bool,
+				      const CefPopupFeatures &, CefWindowInfo &windowInfo, CefRefPtr<CefClient> &,
+				      CefBrowserSettings &, CefRefPtr<CefDictionaryValue> &, bool *)
+#else
 bool QCefBrowserClient::OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, const CefString &target_url,
 				      const CefString &, CefLifeSpanHandler::WindowOpenDisposition, bool,
 				      const CefPopupFeatures &, CefWindowInfo &windowInfo, CefRefPtr<CefClient> &,
 				      CefBrowserSettings &, CefRefPtr<CefDictionaryValue> &, bool *)
+#endif
 {
 	if (allowAllPopups) {
 #ifdef _WIN32
