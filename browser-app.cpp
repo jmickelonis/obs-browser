@@ -619,8 +619,11 @@ void BrowserApp::WatchCSS()
 	watcher.addPath(QString::fromStdString(configPath));
 
 	// We only care about files named .<ID>.css in the config directory
-	std::string sep(&std::filesystem::path::preferred_separator);
-	std::regex cssPathPattern("^.*" + sep + "\\.(\\w+)\\.css$");
+#ifdef _WIN32
+	std::regex cssPathPattern(R"(^.*\\\.(\w+)\.css$)");
+#else
+	std::regex cssPathPattern(R"(^.*/\.(\w+)\.css$)");
+#endif
 
 	// Called when a CSS file changes
 	auto OnFileChanged = [&](const QString &qPath) {
