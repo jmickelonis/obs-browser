@@ -56,6 +56,10 @@ private:
 	QPainterPath path;
 };
 
+/* Whether to use the newer Views API, or the older way.
+   Views used to not work on Windows, but seems to work now, so we'll roll with it. */
+#define _CEF_USE_VIEWS 1
+
 class QCefWidgetInternal : public QCefWidget {
 	Q_OBJECT
 	friend class QCefBrowserClient;
@@ -65,7 +69,7 @@ public:
 	~QCefWidgetInternal();
 
 	CefRefPtr<CefBrowser> cefBrowser;
-#ifndef _WIN32
+#ifdef _CEF_USE_VIEWS
 	CefRefPtr<CefWindow> cefWindow;
 #endif
 	std::string url;
@@ -88,10 +92,9 @@ public:
 	virtual void executeJavaScript(const std::string &script) override;
 
 private:
-
 	enum State { Closing = -1, Initial, CreatingBrowser, Loading, Loaded };
 	volatile State state = State::Initial;
-	unsigned long cefWindowHandle;
+	CefWindowHandle cefWindowHandle;
 	QTimer *showTimer = nullptr;
 
 	std::mutex m;

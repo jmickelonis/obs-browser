@@ -259,7 +259,7 @@ void QCefWidgetInternal::closeBrowser()
 		// Wait for Qt
 		{
 			std::unique_lock<std::mutex> lk(m);
-			cv.wait(lk, [this]{return qtReady;});
+			cv.wait(lk, [this] { return qtReady; });
 		}
 
 		CefRefPtr<CefBrowserHost> browserHost = cefBrowser->GetHost();
@@ -267,7 +267,7 @@ void QCefWidgetInternal::closeBrowser()
 		QCefBrowserClient *browserClient = reinterpret_cast<QCefBrowserClient *>(client.get());
 		browserClient->widget = nullptr;
 
-#ifdef _WIN32
+#if !_CEF_USE_VIEWS
 		HWND hwnd = (HWND)browserHost->GetWindowHandle();
 		if (hwnd)
 			DestroyWindow(hwnd);
@@ -288,17 +288,17 @@ void QCefWidgetInternal::closeBrowser()
 	});
 
 	// Notify CEF
-    {
-        std::lock_guard<std::mutex> lk(m);
-        qtReady = true;
-    }
-    cv.notify_one();
+	{
+		std::lock_guard<std::mutex> lk(m);
+		qtReady = true;
+	}
+	cv.notify_one();
 
 	// Wait for CEF
 	{
-        std::unique_lock<std::mutex> lk(m);
-        cv.wait(lk, [this]{return cefReady;});
-    }
+		std::unique_lock<std::mutex> lk(m);
+		cv.wait(lk, [this] { return cefReady; });
+	}
 
 	if (window) {
 		delete window;
@@ -309,7 +309,7 @@ void QCefWidgetInternal::closeBrowser()
 	state = State::Initial;
 }
 
-#ifndef _WIN32
+#if _CEF_USE_VIEWS
 /*
 Instead of the past solution (letting CEF render to our widgets directly),
 we let CEF create its own window, then grab it in a container so we can embed it.
@@ -383,14 +383,14 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	QueueCEFTask([this, bounds]() {
 		{
 			std::unique_lock<std::mutex> lk(m);
-			cv.wait(lk, [this]{return qtReady;});
+			cv.wait(lk, [this] { return qtReady; });
 		}
 
 		CefBrowserSettings browserSettings;
 		browserSettings.background_color = CefColorSetARGB(0, 0, 0, 0);
 		CefRefPtr<QCefBrowserClient> browserClient = new QCefBrowserClient(this, script, allowAllPopups_);
 
-#ifdef _WIN32
+#if !_CEF_USE_VIEWS
 		// Have to go with the "old" way for Windows
 		// Using the views framework, the native windows will not focus properly,
 		// and will not receive key events (can't type)
@@ -401,8 +401,8 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
 #endif
 
-		cefBrowser = CefBrowserHost::CreateBrowserSync(windowInfo, browserClient, url,
-										  browserSettings, nullptr, rqc);
+		cefBrowser = CefBrowserHost::CreateBrowserSync(windowInfo, browserClient, url, browserSettings, nullptr,
+							       rqc);
 		cefWindowHandle = cefBrowser->GetHost()->GetWindowHandle();
 #else
 		// See comments in BrowserWindowDelegate!
@@ -421,16 +421,16 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		cv.notify_one();
 	});
 
-    {
-        std::lock_guard<std::mutex> lk(m);
-        qtReady = true;
-    }
-    cv.notify_one();
+	{
+		std::lock_guard<std::mutex> lk(m);
+		qtReady = true;
+	}
+	cv.notify_one();
 
 	{
-        std::unique_lock<std::mutex> lk(m);
-        cv.wait(lk, [this]{return cefReady;});
-    }
+		std::unique_lock<std::mutex> lk(m);
+		cv.wait(lk, [this] { return cefReady; });
+	}
 
 	// We're back in the Qt event loop
 
@@ -458,9 +458,8 @@ void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
 	if (state == State::Loading) {
 		const QSize size = event->size();
 		const QMargins margins = contentsMargins();
-		container->resize(
-			size.width() - (margins.left() + margins.right()),
-			size.height() - (margins.top() + margins.bottom()));
+		container->resize(size.width() - (margins.left() + margins.right()),
+				  size.height() - (margins.top() + margins.bottom()));
 	}
 
 	QWidget::resizeEvent(event);
@@ -593,7 +592,7 @@ void QCefWidgetInternal::onLoadEnd()
 		return;
 
 	if (state == State::Loading) {
-#ifndef _WIN32
+#if _CEF_USE_VIEWS
 		cefWindow->Show();
 #endif
 		QTimer::singleShot(0, this, &QCefWidgetInternal::showContainer);
