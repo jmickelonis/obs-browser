@@ -252,47 +252,17 @@ void QCefWidgetInternal::closeBrowser()
 		showTimer = nullptr;
 	}
 
-	qtReady = false;
 	cefReady = false;
 
+	// Relinquish control of the native window so it can be closed
+	window->setVisible(false);
+	delete window;
+	window = nullptr;
+
 	QueueCEFTask([&]() {
-		// Wait for Qt
-		{
-			std::unique_lock<std::mutex> lk(m);
-			cv.wait(lk, [this] { return qtReady; });
-		}
-
-		CefRefPtr<CefBrowserHost> browserHost = cefBrowser->GetHost();
-		CefRefPtr<CefClient> client = browserHost->GetClient();
-		QCefBrowserClient *browserClient = reinterpret_cast<QCefBrowserClient *>(client.get());
-		browserClient->widget = nullptr;
-
-#if !_CEF_USE_VIEWS
-		HWND hwnd = (HWND)browserHost->GetWindowHandle();
-		if (hwnd)
-			DestroyWindow(hwnd);
-#else
-		cefWindow->Close();
-		cefWindow = nullptr;
-#endif
-
-		browserHost->CloseBrowser(true);
-		cefBrowser = nullptr;
-
-		// Notify Qt
-		{
-			std::lock_guard<std::mutex> lk(m);
-			cefReady = true;
-		}
-		cv.notify_one();
+		cefBrowser->GetHost()->CloseBrowser(false);
+		// onBrowserClose() will eventually be called via CEF callbacks
 	});
-
-	// Notify CEF
-	{
-		std::lock_guard<std::mutex> lk(m);
-		qtReady = true;
-	}
-	cv.notify_one();
 
 	// Wait for CEF
 	{
@@ -300,13 +270,30 @@ void QCefWidgetInternal::closeBrowser()
 		cv.wait(lk, [this] { return cefReady; });
 	}
 
-	if (window) {
-		delete window;
-		window = nullptr;
-	}
 	removeChildren();
 
 	state = State::Initial;
+}
+
+void QCefWidgetInternal::onBrowserClose()
+{
+#if _CEF_USE_VIEWS
+	cefWindow->Close();
+	cefWindow = nullptr;
+#else
+	HWND hwnd = (HWND)cefBrowser->GetHost()->GetWindowHandle();
+	if (hwnd)
+		DestroyWindow(hwnd);
+#endif
+
+	cefBrowser = nullptr;
+
+	// Notify Qt
+	{
+		std::lock_guard<std::mutex> lk(m);
+		cefReady = true;
+	}
+	cv.notify_one();
 }
 
 #if _CEF_USE_VIEWS
@@ -375,17 +362,11 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 
 	obs_browser_initialize();
 
-	qtReady = false;
 	cefReady = false;
 
 	QRect bounds = contentsRect();
 
 	QueueCEFTask([this, bounds]() {
-		{
-			std::unique_lock<std::mutex> lk(m);
-			cv.wait(lk, [this] { return qtReady; });
-		}
-
 		CefBrowserSettings browserSettings;
 		browserSettings.background_color = CefColorSetARGB(0, 0, 0, 0);
 		CefRefPtr<QCefBrowserClient> browserClient = new QCefBrowserClient(this, script, allowAllPopups_);
@@ -420,12 +401,6 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		}
 		cv.notify_one();
 	});
-
-	{
-		std::lock_guard<std::mutex> lk(m);
-		qtReady = true;
-	}
-	cv.notify_one();
 
 	{
 		std::unique_lock<std::mutex> lk(m);

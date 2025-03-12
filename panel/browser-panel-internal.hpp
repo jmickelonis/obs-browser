@@ -57,7 +57,7 @@ private:
 };
 
 /* Whether to use the newer Views API, or the older way.
-   Views used to not work on Windows, but seems to work now, so we'll roll with it. */
+   Still trying to work around focus issues on Windows... */
 #define _CEF_USE_VIEWS 1
 
 class QCefWidgetInternal : public QCefWidget {
@@ -100,10 +100,10 @@ private:
 	std::mutex m;
 	std::condition_variable cv;
 	bool cefReady = false;
-	bool qtReady = false;
 
 	void removeChildren();
 	void showContainer();
 	void updateMargins();
+	void onBrowserClose();
 	void onLoadEnd();
 };
