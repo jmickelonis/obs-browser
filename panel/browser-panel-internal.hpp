@@ -104,6 +104,5 @@ private:
 	void removeChildren();
 	void showContainer();
 	void updateMargins();
-	void onBrowserClose();
 	void onLoadEnd();
 };

@@ -188,20 +188,6 @@ void QCefBrowserClient::OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<Cef
 }
 
 /* CefLifeSpanHandler */
-
-// Some versions call OnBeforeClose, some DoClose... just use both
-void QCefBrowserClient::OnBeforeClose(CefRefPtr<CefBrowser> browser)
-{
-	if (widget) {
-		widget->onBrowserClose();
-		widget = nullptr;
-	}
-}
-bool QCefBrowserClient::DoClose(CefRefPtr<CefBrowser> browser)
-{
-	OnBeforeClose(browser);
-}
-
 #if CHROME_VERSION_BUILD >= 6778
 bool QCefBrowserClient::OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int, const CefString &target_url,
 				      const CefString &, CefLifeSpanHandler::WindowOpenDisposition, bool,

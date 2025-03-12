@@ -254,14 +254,17 @@ void QCefWidgetInternal::closeBrowser()
 
 	cefReady = false;
 
-	// Relinquish control of the native window so it can be closed
-	window->setVisible(false);
-	delete window;
-	window = nullptr;
-
 	QueueCEFTask([&]() {
-		cefBrowser->GetHost()->CloseBrowser(false);
-		// onBrowserClose() will eventually be called via CEF callbacks
+		window->close();
+		cefBrowser->GetHost()->CloseBrowser(true);
+		cefBrowser = nullptr;
+
+		// Notify Qt
+		{
+			std::lock_guard<std::mutex> lk(m);
+			cefReady = true;
+		}
+		cv.notify_one();
 	});
 
 	// Wait for CEF
@@ -270,30 +273,11 @@ void QCefWidgetInternal::closeBrowser()
 		cv.wait(lk, [this] { return cefReady; });
 	}
 
+	delete window;
+	window = nullptr;
 	removeChildren();
 
 	state = State::Initial;
-}
-
-void QCefWidgetInternal::onBrowserClose()
-{
-#if _CEF_USE_VIEWS
-	cefWindow->Close();
-	cefWindow = nullptr;
-#else
-	HWND hwnd = (HWND)cefBrowser->GetHost()->GetWindowHandle();
-	if (hwnd)
-		DestroyWindow(hwnd);
-#endif
-
-	cefBrowser = nullptr;
-
-	// Notify Qt
-	{
-		std::lock_guard<std::mutex> lk(m);
-		cefReady = true;
-	}
-	cv.notify_one();
 }
 
 #if _CEF_USE_VIEWS
@@ -376,7 +360,9 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		// Using the views framework, the native windows will not focus properly,
 		// and will not receive key events (can't type)
 		CefWindowInfo windowInfo;
+#ifdef _WIN32
 		windowInfo.style = WS_POPUP;
+#endif
 
 #if CHROME_VERSION_BUILD >= 6533
 		windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
