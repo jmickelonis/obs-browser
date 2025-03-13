@@ -275,6 +275,8 @@ void QCefWidgetInternal::closeBrowser()
 
 	delete window;
 	window = nullptr;
+	delete container;
+	container = nullptr;
 	removeChildren();
 
 	state = State::Initial;
@@ -344,7 +346,10 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
 	layout->addWidget(new ProgressWidget, 0, 0, Qt::AlignCenter);
 
-	obs_browser_initialize();
+	if (os_event_try(cef_started_event) != 0) {
+		obs_browser_initialize();
+		os_event_wait(cef_started_event);
+	}
 
 	cefReady = false;
 
