@@ -68,6 +68,9 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 using namespace std;
 
+#if ENABLE_BROWSER_MANAGER_THREAD
+static thread manager_thread;
+#endif
 static bool manager_initialized = false;
 os_event_t *cef_started_event = nullptr;
 
@@ -314,7 +317,7 @@ static void BrowserInit(void)
 #ifdef ENABLE_BROWSER_QT_LOOP
 	settings.external_message_pump = true;
 	settings.multi_threaded_message_loop = false;
-#else
+#elif !ENABLE_BROWSER_MANAGER_THREAD
 	// Let CEF use its own threaded loop
 	settings.multi_threaded_message_loop = true;
 #endif
@@ -430,8 +433,13 @@ static void BrowserManagerThread(void)
 
 extern "C" EXPORT void obs_browser_initialize(void)
 {
-	if (!os_atomic_set_bool(&manager_initialized, true))
+	if (!os_atomic_set_bool(&manager_initialized, true)) {
+#if ENABLE_BROWSER_MANAGER_THREAD
+		manager_thread = thread(BrowserManagerThread);
+#else
 		BrowserInit();
+#endif
+	}
 }
 
 void RegisterBrowserSource()
@@ -782,6 +790,13 @@ void obs_module_unload(void)
 {
 #ifdef ENABLE_BROWSER_QT_LOOP
 	BrowserShutdown();
+#elif ENABLE_BROWSER_MANAGER_THREAD
+	if (manager_thread.joinable()) {
+		if (!QueueCEFTask([]() { CefQuitMessageLoop(); }))
+			blog(LOG_DEBUG, "[obs-browser]: Failed to post CefQuit task to loop");
+
+		manager_thread.join();
+	}
 #else
 	// Shut down from CEF's event loop
 	QueueCEFTask([]() { BrowserShutdown(); });
