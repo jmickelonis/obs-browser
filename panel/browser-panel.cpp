@@ -399,9 +399,11 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	window = QWindow::fromWinId((WId)cefWindowHandle);
 	container = QWidget::createWindowContainer(window);
 
+#if !_CEF_USE_VIEWS
 	// This stops the animations/blips when closing later
 	window->setOpacity(0);
 	window->setFlags(window->flags() | Qt::BypassWindowManagerHint);
+#endif
 
 	// We'll make it visible after the browser is done loading
 	container->setVisible(false);
