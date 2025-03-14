@@ -276,6 +276,11 @@ CefRefPtr<CefV8Value> CefValueToCefV8Value(CefRefPtr<CefValue> value)
 			result->SetValue((int)i, CefValueToCefV8Value(list->GetValue(i)));
 		}
 	} break;
+#if CHROME_VERSION_BUILD >= 6943
+	case VTYPE_NUM_VALUES:
+		result = CefV8Value::CreateNull();
+		break;
+#endif
 	}
 	return result;
 }
