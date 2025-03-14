@@ -37,7 +37,7 @@ public:
 
 	virtual void resizeEvent(QResizeEvent *event) override;
 	virtual void showEvent(QShowEvent *event) override;
-	virtual QPaintEngine *paintEngine() const override;
+	virtual bool event(QEvent *event) override;
 
 	virtual void setURL(const std::string &url) override;
 	virtual void setStartupScript(const std::string &script) override;
@@ -57,4 +57,6 @@ private:
 	std::mutex m;
 	std::condition_variable cv;
 	bool cefReady = false;
+
+	void updateMargins();
 };

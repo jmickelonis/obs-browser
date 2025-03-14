@@ -5,6 +5,8 @@
 
 #include <QWindow>
 #include <QApplication>
+#include <QGridLayout>
+#include <QStyleOption>
 
 #ifdef ENABLE_BROWSER_QT_LOOP
 #include <QEventLoop>
@@ -136,14 +138,16 @@ QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_,
 	  url(url_),
 	  rqc(rqc_)
 {
-	setAttribute(Qt::WA_PaintOnScreen);
 	setAttribute(Qt::WA_StaticContents);
-	setAttribute(Qt::WA_NoSystemBackground);
-	setAttribute(Qt::WA_OpaquePaintEvent);
 	setAttribute(Qt::WA_DontCreateNativeAncestors);
-	setAttribute(Qt::WA_NativeWindow);
+	setAttribute(Qt::WA_StyledBackground);
 
 	setFocusPolicy(Qt::ClickFocus);
+
+	QGridLayout *layout = new QGridLayout();
+	layout->setContentsMargins(0, 0, 0, 0);
+	setLayout(layout);
+	updateMargins();
 
 	window = new QWindow();
 	window->setFlags(Qt::FramelessWindowHint);
@@ -230,9 +234,14 @@ void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
 
 void QCefWidgetInternal::Resize()
 {
-	QSize size = this->size() * devicePixelRatioF();
+	if (!container)
+		return;
 
-	bool success = QueueCEFTask([this, size]() {
+	QSize size = container->size() * devicePixelRatioF();
+	unsigned int w = size.width();
+	unsigned int h = size.height();
+
+	QueueCEFTask([this, w, h]() {
 		if (!cefBrowser)
 			return;
 
@@ -242,9 +251,8 @@ void QCefWidgetInternal::Resize()
 			return;
 
 #ifdef _WIN32
-		SetWindowPos((HWND)handle, nullptr, 0, 0, size.width(), size.height(),
-			     SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
-		SendMessage((HWND)handle, WM_SIZE, 0, MAKELPARAM(size.width(), size.height()));
+		SetWindowPos((HWND)handle, nullptr, 0, 0, w, h, SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+		SendMessage((HWND)handle, WM_SIZE, 0, MAKELPARAM(w, h));
 #else
 		Display *xDisplay = cef_get_xdisplay();
 
@@ -254,17 +262,14 @@ void QCefWidgetInternal::Resize()
 		XWindowChanges changes = {0};
 		changes.x = 0;
 		changes.y = 0;
-		changes.width = size.width();
-		changes.height = size.height();
+		changes.width = w;
+		changes.height = h;
 		XConfigureWindow(xDisplay, (Window)handle, CWX | CWY | CWHeight | CWWidth, &changes);
 #if CHROME_VERSION_BUILD >= 4638
 		XSync(xDisplay, false);
 #endif
 #endif
 	});
-
-	if (success && container)
-		container->resize(size.width(), size.height());
 }
 
 void QCefWidgetInternal::showEvent(QShowEvent *event)
@@ -314,16 +319,46 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	}
 
 	if (!container) {
-		container = QWidget::createWindowContainer(window, this);
-		container->show();
+		container = QWidget::createWindowContainer(window);
+		QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
+		layout->addWidget(container, 0, 0);
+
+		// Set the initial container size, since it won't be automatic
+		const QSize size = this->size();
+		const QMargins margins = contentsMargins();
+		container->resize(size.width() - (margins.left() + margins.right()),
+				  size.height() - (margins.top() + margins.bottom()));
 	}
 
 	Resize();
 }
 
-QPaintEngine *QCefWidgetInternal::paintEngine() const
+bool QCefWidgetInternal::event(QEvent *event)
 {
-	return nullptr;
+	switch (event->type()) {
+	case QEvent::StyleChange:
+		updateMargins();
+		break;
+	default:
+		break;
+	}
+
+	return QCefWidget::event(event);
+}
+
+void QCefWidgetInternal::updateMargins()
+{
+	QStyleOption opt;
+	opt.initFrom(this);
+	opt.rect.setRect(0, 0, 0xffff, 0xffff);
+
+	QRect rect = style()->subElementRect(QStyle::SE_ShapedFrameContents, &opt, this);
+	if (rect.isValid()) {
+		setContentsMargins(rect.left(), rect.top(), opt.rect.right() - rect.right(),
+				   opt.rect.bottom() - rect.bottom());
+	} else {
+		setContentsMargins(0, 0, 0, 0);
+	}
 }
 
 void QCefWidgetInternal::setURL(const std::string &url_)
