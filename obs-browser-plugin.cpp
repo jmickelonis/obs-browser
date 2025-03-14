@@ -64,7 +64,17 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 using namespace std;
 
+// Whether to use a custom manager thread (instead of CEF's).
+// This isn't a good idea on Linux (causes crashes on text input).
+#define ENABLE_BROWSER_MANAGER_THREAD false
+
+#if ENABLE_BROWSER_QT_LOOP
+#undef ENABLE_BROWSER_MANAGER_THREAD
+#endif
+
+#if ENABLE_BROWSER_MANAGER_THREAD
 static thread manager_thread;
+#endif
 static bool manager_initialized = false;
 os_event_t *cef_started_event = nullptr;
 
@@ -311,6 +321,8 @@ static void BrowserInit(void)
 #ifdef ENABLE_BROWSER_QT_LOOP
 	settings.external_message_pump = true;
 	settings.multi_threaded_message_loop = false;
+#elif !ENABLE_BROWSER_MANAGER_THREAD
+	settings.multi_threaded_message_loop = true;
 #endif
 
 #if !defined(_WIN32) && !defined(__APPLE__)
@@ -409,7 +421,7 @@ static void BrowserShutdown(void)
 	app = nullptr;
 }
 
-#ifndef ENABLE_BROWSER_QT_LOOP
+#if ENABLE_BROWSER_MANAGER_THREAD
 static void BrowserManagerThread(void)
 {
 	BrowserInit();
@@ -421,10 +433,10 @@ static void BrowserManagerThread(void)
 extern "C" EXPORT void obs_browser_initialize(void)
 {
 	if (!os_atomic_set_bool(&manager_initialized, true)) {
-#ifdef ENABLE_BROWSER_QT_LOOP
-		BrowserInit();
-#else
+#if ENABLE_BROWSER_MANAGER_THREAD
 		manager_thread = thread(BrowserManagerThread);
+#else
+		BrowserInit();
 #endif
 	}
 }
@@ -777,13 +789,16 @@ void obs_module_unload(void)
 {
 #ifdef ENABLE_BROWSER_QT_LOOP
 	BrowserShutdown();
-#else
+#elif ENABLE_BROWSER_MANAGER_THREAD
 	if (manager_thread.joinable()) {
 		if (!QueueCEFTask([]() { CefQuitMessageLoop(); }))
 			blog(LOG_DEBUG, "[obs-browser]: Failed to post CefQuit task to loop");
 
 		manager_thread.join();
 	}
+#else
+	// Shut down from CEF's event loop
+	QueueCEFTask([]() { BrowserShutdown(); });
 #endif
 
 	os_event_destroy(cef_started_event);
