@@ -145,10 +145,8 @@ QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_,
 
 	setFocusPolicy(Qt::ClickFocus);
 
-#ifndef __APPLE__
 	window = new QWindow();
 	window->setFlags(Qt::FramelessWindowHint);
-#endif
 }
 
 QCefWidgetInternal::~QCefWidgetInternal()
@@ -158,206 +156,75 @@ QCefWidgetInternal::~QCefWidgetInternal()
 
 void QCefWidgetInternal::closeBrowser()
 {
-	CefRefPtr<CefBrowser> browser = cefBrowser;
-	if (!!browser) {
-		auto destroyBrowser = [=](CefRefPtr<CefBrowser> cefBrowser) {
-			CefRefPtr<CefClient> client = cefBrowser->GetHost()->GetClient();
-			QCefBrowserClient *bc = reinterpret_cast<QCefBrowserClient *>(client.get());
+	bool wasBrowserActive = state >= State::Active;
 
-			cefBrowser->GetHost()->CloseBrowser(true);
+	if (!wasBrowserActive) {
+		state = State::Initial;
+		return;
+	}
 
-#if !defined(_WIN32) && !defined(__APPLE__) && CHROME_VERSION_BUILD >= 6533
-			QEventLoop loop;
+	state = State::Closing;
+	cefReady = false;
 
-			connect(this, &QCefWidgetInternal::readyToClose, &loop, &QEventLoop::quit);
-
-			QTimer::singleShot(1000, &loop, &QEventLoop::quit);
-
-			loop.exec();
-#endif
-			if (bc) {
-				bc->widget = nullptr;
-			}
-		};
+	QueueCEFTask([this]() {
+		CefRefPtr<CefBrowserHost> browserHost = cefBrowser->GetHost();
 
 		/* So you're probably wondering what's going on here.  If you
-		 * call CefBrowserHost::CloseBrowser, and it fails to unload
-		 * the web page *before* WM_NCDESTROY is called on the browser
-		 * HWND, it will call an internal CEF function
-		 * CefBrowserPlatformDelegateNativeWin::CloseHostWindow, which
-		 * will attempt to close the browser's main window itself.
-		 * Problem is, this closes the root window containing the
-		 * browser's HWND rather than the browser's specific HWND for
-		 * whatever mysterious reason.  If the browser is in a dock
-		 * widget, then the window it closes is, unfortunately, the
-		 * main program's window, causing the entire program to shut
-		 * down.
-		 *
-		 * So, instead, before closing the browser, we need to decouple
-		 * the browser from the widget.  To do this, we hide it, then
-		 * remove its parent. */
+		* call CefBrowserHost::CloseBrowser, and it fails to unload
+		* the web page *before* WM_NCDESTROY is called on the browser
+		* HWND, it will call an internal CEF function
+		* CefBrowserPlatformDelegateNativeWin::CloseHostWindow, which
+		* will attempt to close the browser's main window itself.
+		* Problem is, this closes the root window containing the
+		* browser's HWND rather than the browser's specific HWND for
+		* whatever mysterious reason.  If the browser is in a dock
+		* widget, then the window it closes is, unfortunately, the
+		* main program's window, causing the entire program to shut
+		* down.
+		*
+		* So, instead, before closing the browser, we need to decouple
+		* the browser from the widget.  To do this, we hide it, then
+		* remove its parent. */
 #ifdef _WIN32
-		HWND hwnd = (HWND)cefBrowser->GetHost()->GetWindowHandle();
+		HWND hwnd = (HWND)browserHost->GetWindowHandle();
 		if (hwnd) {
 			ShowWindow(hwnd, SW_HIDE);
 			SetParent(hwnd, nullptr);
 		}
 #elif __APPLE__
 		// felt hacky, might delete later
-		void *view = (id)cefBrowser->GetHost()->GetWindowHandle();
+		void *view = (id)browserHost->GetWindowHandle();
 		if (*((bool *)view))
 			((void (*)(id, SEL))objc_msgSend)((id)view, sel_getUid("removeFromSuperview"));
 #endif
 
-		destroyBrowser(browser);
-		browser = nullptr;
+		QCefBrowserClient *browserClient =
+			reinterpret_cast<QCefBrowserClient *>(browserHost->GetClient().get());
+		browserClient->widget = nullptr;
+
+		browserHost->CloseBrowser(true);
 		cefBrowser = nullptr;
-	}
-}
 
-#ifdef __linux__
-static bool XWindowHasAtom(Display *display, Window w, Atom a)
-{
-	Atom type;
-	int format;
-	unsigned long nItems;
-	unsigned long bytesAfter;
-	unsigned char *data = NULL;
-
-	if (XGetWindowProperty(display, w, a, 0, LONG_MAX, False, AnyPropertyType, &type, &format, &nItems, &bytesAfter,
-			       &data) != Success)
-		return false;
-
-	if (data)
-		XFree(data);
-
-	return type != None;
-}
-
-/* On Linux / X11, CEF sets the XdndProxy of the toplevel window
- * it's attached to, so that it can read drag events. When this
- * toplevel happens to be OBS Studio's main window (e.g. when a
- * browser panel is docked into to the main window), setting the
- * XdndProxy atom ends up breaking DnD of sources and scenes. Thus,
- * we have to manually unset this atom.
- */
-void QCefWidgetInternal::unsetToplevelXdndProxy()
-{
-	if (!cefBrowser)
-		return;
-
-	CefWindowHandle browserHandle = cefBrowser->GetHost()->GetWindowHandle();
-	Display *xDisplay = cef_get_xdisplay();
-	Window toplevel, root, parent, *children;
-	unsigned int nChildren;
-	bool found = false;
-
-	toplevel = browserHandle;
-
-	// Find the toplevel
-	Atom netWmPidAtom = XInternAtom(xDisplay, "_NET_WM_PID", False);
-	do {
-		if (XQueryTree(xDisplay, toplevel, &root, &parent, &children, &nChildren) == 0)
-			return;
-
-		if (children)
-			XFree(children);
-
-		if (root == parent || !XWindowHasAtom(xDisplay, parent, netWmPidAtom)) {
-			found = true;
-			break;
-		}
-		toplevel = parent;
-	} while (true);
-
-	if (!found)
-		return;
-
-	// Check if the XdndProxy property is set
-	Atom xDndProxyAtom = XInternAtom(xDisplay, "XdndProxy", False);
-	if (needsDeleteXdndProxy && !XWindowHasAtom(xDisplay, toplevel, xDndProxyAtom)) {
-		QueueCEFTask([this]() { unsetToplevelXdndProxy(); });
-		return;
-	}
-
-	XDeleteProperty(xDisplay, toplevel, xDndProxyAtom);
-	needsDeleteXdndProxy = false;
-}
-#endif
-
-void QCefWidgetInternal::Init()
-{
-#ifndef __APPLE__
-	WId handle = window->winId();
-	QSize size = this->size();
-	size *= devicePixelRatioF();
-	bool success = QueueCEFTask(
-		[this, handle, size]()
-#else
-	WId handle = winId();
-	bool success = QueueCEFTask(
-		[this, handle]()
-#endif
+		// Notify Qt
 		{
-			CefWindowInfo windowInfo;
-
-			/* Make sure Init isn't called more than once. */
-			if (cefBrowser)
-				return;
-
-#ifdef __APPLE__
-			QSize size = this->size();
-#endif
-
-#if CHROME_VERSION_BUILD >= 6533
-			windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
-#endif
-
-#if CHROME_VERSION_BUILD < 4430
-#ifdef __APPLE__
-			windowInfo.SetAsChild((CefWindowHandle)handle, 0, 0, size.width(), size.height());
-#else
-#ifdef _WIN32
-			RECT rc = {0, 0, size.width(), size.height()};
-#else
-			CefRect rc = {0, 0, size.width(), size.height()};
-#endif
-			windowInfo.SetAsChild((CefWindowHandle)handle, rc);
-#endif
-#else
-			windowInfo.SetAsChild((CefWindowHandle)handle, CefRect(0, 0, size.width(), size.height()));
-#endif
-
-			CefRefPtr<QCefBrowserClient> browserClient =
-				new QCefBrowserClient(this, script, allowAllPopups_);
-
-			CefBrowserSettings cefBrowserSettings;
-			cefBrowser = CefBrowserHost::CreateBrowserSync(windowInfo, browserClient, url,
-								       cefBrowserSettings,
-								       CefRefPtr<CefDictionaryValue>(), rqc);
-
-#ifdef __linux__
-			QueueCEFTask([this]() { unsetToplevelXdndProxy(); });
-#endif
-		});
-
-	if (success) {
-		timer.stop();
-#ifndef __APPLE__
-		if (!container) {
-			container = QWidget::createWindowContainer(window, this);
-			container->show();
+			std::lock_guard<std::mutex> lk(m);
+			cefReady = true;
 		}
+		cv.notify_one();
+	});
 
-		Resize();
-#endif
+	// Wait for CEF
+	{
+		std::unique_lock<std::mutex> lk(m);
+		cv.wait(lk, [this] { return cefReady; });
 	}
+
+	state = State::Initial;
 }
 
 void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
 {
 	QWidget::resizeEvent(event);
-#ifndef __APPLE__
 	Resize();
 }
 
@@ -398,24 +265,60 @@ void QCefWidgetInternal::Resize()
 
 	if (success && container)
 		container->resize(size.width(), size.height());
-#endif
-}
-
-void QCefWidgetInternal::CloseSafely()
-{
-	emit readyToClose();
 }
 
 void QCefWidgetInternal::showEvent(QShowEvent *event)
 {
 	QWidget::showEvent(event);
 
-	if (!cefBrowser) {
+	if (state != State::Initial)
+		return;
+
+	state = State::Active;
+	cefReady = false;
+
+	if (os_event_try(cef_started_event) != 0) {
 		obs_browser_initialize();
-		connect(&timer, &QTimer::timeout, this, &QCefWidgetInternal::Init);
-		timer.start(500);
-		Init();
+		os_event_wait(cef_started_event);
 	}
+
+	WId handle = window->winId();
+	QSize size = this->size();
+	size *= devicePixelRatioF();
+
+	QueueCEFTask([this, handle, size]() {
+		CefBrowserSettings browserSettings;
+
+		CefWindowInfo windowInfo;
+#if CHROME_VERSION_BUILD >= 6533
+		windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
+#endif
+		windowInfo.SetAsChild((CefWindowHandle)handle, CefRect(0, 0, size.width(), size.height()));
+
+		CefRefPtr<QCefBrowserClient> browserClient = new QCefBrowserClient(this, script, allowAllPopups_);
+		cefBrowser = CefBrowserHost::CreateBrowserSync(windowInfo, browserClient, url, browserSettings,
+							       CefRefPtr<CefDictionaryValue>(), rqc);
+
+		// Notify Qt
+		{
+			std::lock_guard<std::mutex> lk(m);
+			cefReady = true;
+		}
+		cv.notify_one();
+	});
+
+	// Wait for CEF
+	{
+		std::unique_lock<std::mutex> lk(m);
+		cv.wait(lk, [this] { return cefReady; });
+	}
+
+	if (!container) {
+		container = QWidget::createWindowContainer(window, this);
+		container->show();
+	}
+
+	Resize();
 }
 
 QPaintEngine *QCefWidgetInternal::paintEngine() const

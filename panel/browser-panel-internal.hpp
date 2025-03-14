@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <mutex>
+#include <condition_variable>
 
 struct PopupWhitelistInfo {
 	std::string url;
@@ -32,11 +33,6 @@ public:
 	std::string url;
 	std::string script;
 	CefRefPtr<CefRequestContext> rqc;
-	QTimer timer;
-#ifndef __APPLE__
-	QPointer<QWindow> window;
-	QPointer<QWidget> container;
-#endif
 	bool allowAllPopups_ = false;
 
 	virtual void resizeEvent(QResizeEvent *event) override;
@@ -51,18 +47,14 @@ public:
 	virtual bool zoomPage(int direction) override;
 	virtual void executeJavaScript(const std::string &script) override;
 
-	void CloseSafely();
 	void Resize();
 
-#ifdef __linux__
 private:
-	bool needsDeleteXdndProxy = true;
-	void unsetToplevelXdndProxy();
-#endif
-
-public slots:
-	void Init();
-
-signals:
-	void readyToClose();
+	QPointer<QWindow> window;
+	QPointer<QWidget> container;
+	enum State { Closing = -1, Initial, Active };
+	volatile State state = State::Initial;
+	std::mutex m;
+	std::condition_variable cv;
+	bool cefReady = false;
 };
