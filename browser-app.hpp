@@ -21,9 +21,11 @@
 #include <map>
 #include <unordered_map>
 #include <functional>
+#include <thread>
 #include "cef-headers.hpp"
 
 typedef std::function<void(CefRefPtr<CefBrowser>)> BrowserFunc;
+typedef std::string string;
 
 #ifdef ENABLE_BROWSER_QT_LOOP
 #include <QObject>
@@ -62,12 +64,19 @@ extern void QueueBrowserTask(CefRefPtr<CefBrowser> browser, BrowserFunc func);
 class BrowserApp : public CefApp, public CefRenderProcessHandler, public CefBrowserProcessHandler, public CefV8Handler {
 
 	void ExecuteJSFunction(CefRefPtr<CefBrowser> browser, const char *functionName, CefV8ValueList arguments);
+	void SendCSSChanged(string id);
+	void WatchCSS();
 
 	typedef std::map<int, CefRefPtr<CefV8Value>> CallbackMap;
+	typedef std::map<std::pair<string, int>, std::pair<CefRefPtr<CefV8Context>, CefRefPtr<CefV8Value>>>
+		CSSCallbackMap;
 
 	bool shared_texture_available;
 	CallbackMap callbackMap;
 	int callbackId;
+	CSSCallbackMap cssCallbackMap;
+	std::thread *cssWatcherThread = nullptr;
+	CefRefPtr<CefTaskRunner> taskRunner = nullptr;
 #if !defined(__APPLE__) && !defined(_WIN32)
 	bool wayland;
 #endif
@@ -82,6 +91,7 @@ public:
 #endif
 	{
 	}
+	~BrowserApp();
 
 	virtual CefRefPtr<CefRenderProcessHandler> GetRenderProcessHandler() override;
 	virtual CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override;
@@ -91,6 +101,8 @@ public:
 						   CefRefPtr<CefCommandLine> command_line) override;
 	virtual void OnContextCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
 				      CefRefPtr<CefV8Context> context) override;
+	virtual void OnContextReleased(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+				       CefRefPtr<CefV8Context> context) override;
 	virtual bool OnProcessMessageReceived(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
 					      CefProcessId source_process,
 					      CefRefPtr<CefProcessMessage> message) override;
