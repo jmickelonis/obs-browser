@@ -2,6 +2,8 @@
 
 #include <QTimer>
 #include <QPointer>
+#include <QPropertyAnimation>
+#include <QPainterPath>
 #include "browser-panel.hpp"
 #include "cef-headers.hpp"
 
@@ -21,6 +23,35 @@ extern std::vector<PopupWhitelistInfo> popup_whitelist;
 extern std::vector<PopupWhitelistInfo> forced_popups;
 
 /* ------------------------------------------------------------------------- */
+
+/* Shows that a browser panel is loading, and covers up any graphical blips
+   until the content is completely ready. */
+class ProgressWidget : public QWidget {
+	Q_OBJECT
+	Q_PROPERTY(qreal angle READ getAngle WRITE setAngle)
+
+public:
+	static const unsigned int w = 50;
+	static const unsigned int h = 50;
+	static const unsigned int thickness = 5;
+
+	ProgressWidget(QWidget *parent = nullptr);
+	~ProgressWidget();
+
+	qreal getAngle();
+	void setAngle(qreal angle);
+
+	virtual QSize sizeHint() const override;
+
+protected:
+	virtual bool event(QEvent *) override;
+	virtual void paintEvent(QPaintEvent *) override;
+
+private:
+	QPropertyAnimation *animation;
+	QConicalGradient gradient;
+	QPainterPath path;
+};
 
 class QCefWidgetInternal : public QCefWidget {
 	Q_OBJECT
@@ -48,15 +79,20 @@ public:
 	virtual void executeJavaScript(const std::string &script) override;
 
 private:
+	friend class QCefBrowserClient;
+
 	QPointer<QWindow> window;
 	QPointer<QWidget> container;
 	CefWindowHandle cefWindowHandle = 0;
-	enum State { Closing = -1, Initial, Active };
+	enum State { Closing = -1, Initial, Loading, Loaded };
 	volatile State state = State::Initial;
+	QTimer *showTimer = nullptr;
 	std::mutex m;
 	std::condition_variable cv;
 	bool cefReady = false;
 
 	void resizeBrowser(QResizeEvent *event = nullptr);
+	void showContainer();
 	void updateMargins();
+	void onLoadingFinished();
 };

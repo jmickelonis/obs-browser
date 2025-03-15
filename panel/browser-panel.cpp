@@ -8,6 +8,7 @@
 #include <QGridLayout>
 #include <QStyleOption>
 #include <QResizeEvent>
+#include <QPainter>
 
 #ifdef ENABLE_BROWSER_QT_LOOP
 #include <QEventLoop>
@@ -134,6 +135,79 @@ struct QCefCookieManagerInternal : QCefCookieManager {
 
 /* ------------------------------------------------------------------------- */
 
+ProgressWidget::ProgressWidget(QWidget *parent) : QWidget(parent), gradient(w / 2.0, h / 2.0, 0)
+{
+	setMaximumSize(sizeHint());
+
+	gradient.setColorAt(0, palette().color(QPalette::Highlight));
+	gradient.setColorAt(1, Qt::transparent);
+
+	path.addEllipse(thickness / 2.0, thickness / 2.0, w - thickness, h - thickness);
+
+	animation = nullptr;
+}
+
+ProgressWidget::~ProgressWidget()
+{
+	if (animation) {
+		delete animation;
+		animation = nullptr;
+	}
+}
+
+qreal ProgressWidget::getAngle()
+{
+	return gradient.angle();
+}
+
+void ProgressWidget::setAngle(qreal angle)
+{
+	gradient.setAngle(angle);
+	update();
+}
+
+QSize ProgressWidget::sizeHint() const
+{
+	return QSize(w, h);
+}
+
+bool ProgressWidget::event(QEvent *event)
+{
+	switch (event->type()) {
+	case QEvent::PaletteChange:
+		gradient.setColorAt(0, palette().color(QPalette::Highlight));
+		break;
+	case QEvent::Show:
+		if (!animation) {
+			animation = new QPropertyAnimation(this, "angle");
+			animation->setDuration(1000);
+			animation->setStartValue(360);
+			animation->setEndValue(0);
+			animation->setLoopCount(-1);
+			animation->start();
+		}
+		break;
+	case QEvent::Hide:
+		if (animation) {
+			animation->stop();
+			delete animation;
+			animation = nullptr;
+		}
+		break;
+	default:
+		break;
+	}
+	return QWidget::event(event);
+}
+
+void ProgressWidget::paintEvent(QPaintEvent *)
+{
+	QPainter painter(this);
+	painter.setRenderHint(QPainter::Antialiasing);
+	painter.setPen(QPen(gradient, thickness));
+	painter.drawPath(path);
+}
+
 QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_, CefRefPtr<CefRequestContext> rqc_)
 	: QCefWidget(parent),
 	  url(url_),
@@ -158,7 +232,7 @@ QCefWidgetInternal::~QCefWidgetInternal()
 
 void QCefWidgetInternal::closeBrowser()
 {
-	bool wasBrowserActive = state >= State::Active;
+	bool wasBrowserActive = state >= State::Loading;
 
 	if (!wasBrowserActive) {
 		state = State::Initial;
@@ -167,6 +241,11 @@ void QCefWidgetInternal::closeBrowser()
 
 	state = State::Closing;
 	cefReady = false;
+
+	if (showTimer) {
+		delete showTimer;
+		showTimer = nullptr;
+	}
 
 	QueueCEFTask([this]() {
 		/* So you're probably wondering what's going on here.  If you
@@ -279,7 +358,7 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	if (state != State::Initial)
 		return;
 
-	state = State::Active;
+	state = State::Loading;
 	cefReady = false;
 
 	if (os_event_try(cef_started_event) != 0) {
@@ -322,10 +401,52 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	}
 
 	container = QWidget::createWindowContainer(window);
+	container->setVisible(false);
 	QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
 	layout->addWidget(container, 0, 0);
+	layout->addWidget(new ProgressWidget, 0, 0, Qt::AlignCenter);
 
 	resizeBrowser();
+
+	if (state == State::Loaded)
+		// Finished already
+		showContainer();
+}
+
+void QCefWidgetInternal::onLoadingFinished()
+{
+	if (state != State::Loading)
+		return;
+
+	state = State::Loaded;
+	QTimer::singleShot(0, this, &QCefWidgetInternal::showContainer);
+}
+
+void QCefWidgetInternal::showContainer()
+{
+	if (showTimer)
+		return;
+
+	// Show the container after a delay to cover up a lot of loading blips
+	showTimer = new QTimer();
+	showTimer->setInterval(250);
+	showTimer->setSingleShot(true);
+	connect(showTimer, &QTimer::timeout, this, [this]() {
+		if (state != State::Loaded || container->isVisible())
+			return;
+
+		delete showTimer;
+		showTimer = nullptr;
+
+		// Dispose of the progress indicator
+		QLayoutItem *child = layout()->takeAt(1);
+		delete child->widget();
+		delete child;
+
+		// Show the CEF window
+		container->setVisible(true);
+	});
+	showTimer->start();
 }
 
 bool QCefWidgetInternal::event(QEvent *event)
