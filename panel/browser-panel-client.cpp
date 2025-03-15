@@ -71,6 +71,15 @@ CefRefPtr<CefJSDialogHandler> QCefBrowserClient::GetJSDialogHandler()
 /* CefDisplayHandler */
 void QCefBrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString &title)
 {
+	CefRefPtr<CefFrame> frame = browser->GetMainFrame();
+	// Attach the url to the body element, so CSS can query it (data-url attribute)
+	std::string encodedURL = CefURIEncode(frame->GetURL(), false).ToString();
+	std::string s = "var body = document.querySelector('body');"
+			"if (body)"
+			"	body.dataset.url = decodeURIComponent('" +
+			encodedURL + "');";
+	frame->ExecuteJavaScript(s, "", 0);
+
 	if (widget && widget->cefBrowser->IsSame(browser)) {
 		std::string str_title = title;
 		QString qt_title = QString::fromUtf8(str_title.c_str());
