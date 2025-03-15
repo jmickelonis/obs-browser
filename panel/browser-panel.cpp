@@ -277,21 +277,7 @@ void QCefWidgetInternal::closeBrowser()
 			((void (*)(id, SEL))objc_msgSend)((id)view, sel_getUid("removeFromSuperview"));
 #endif
 
-		CefRefPtr<CefBrowserHost> browserHost = cefBrowser->GetHost();
-		QCefBrowserClient *browserClient =
-			reinterpret_cast<QCefBrowserClient *>(browserHost->GetClient().get());
-		browserClient->widget = nullptr;
-
-		browserHost->CloseBrowser(true);
-		cefBrowser = nullptr;
-		cefWindowHandle = 0;
-
-		// Notify Qt
-		{
-			std::lock_guard<std::mutex> lk(m);
-			cefReady = true;
-		}
-		cv.notify_one();
+		cefBrowser->GetHost()->CloseBrowser(true);
 	});
 
 	// Wait for CEF
@@ -306,6 +292,26 @@ void QCefWidgetInternal::closeBrowser()
 	window = nullptr;
 
 	state = State::Initial;
+}
+
+/* This is called from the client.
+   We wait for this, in order to avoid closing the window too early,
+   which can cause the GPU process to crash. */
+void QCefWidgetInternal::onBrowserClosed()
+{
+	CefRefPtr<CefBrowserHost> browserHost = cefBrowser->GetHost();
+	QCefBrowserClient *browserClient = reinterpret_cast<QCefBrowserClient *>(browserHost->GetClient().get());
+	browserClient->widget = nullptr;
+
+	cefBrowser = nullptr;
+	cefWindowHandle = 0;
+
+	// Notify Qt
+	{
+		std::lock_guard<std::mutex> lk(m);
+		cefReady = true;
+	}
+	cv.notify_one();
 }
 
 void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
