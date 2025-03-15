@@ -241,6 +241,7 @@ void QCefWidgetInternal::closeBrowser()
 
 	state = State::Closing;
 	cefReady = false;
+	container->setVisible(false);
 
 	if (showTimer) {
 		delete showTimer;
