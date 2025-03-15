@@ -230,11 +230,15 @@ void QCefWidgetInternal::closeBrowser()
 void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
 {
 	QWidget::resizeEvent(event);
+	resizeBrowser(event);
+}
 
+void QCefWidgetInternal::resizeBrowser(QResizeEvent *event)
+{
 	if (!cefWindowHandle)
 		return;
 
-	QSize size = event->size();
+	const QSize size = event ? event->size() : this->size();
 	QMargins margins = contentsMargins();
 	qreal ratio = devicePixelRatioF();
 	unsigned int w = (size.width() - (margins.left() + margins.right())) * ratio;
@@ -282,20 +286,17 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	}
 
 	WId handle = window->winId();
-	QSize size = this->size();
-	QMargins margins = contentsMargins();
-	qreal ratio = devicePixelRatioF();
-	unsigned int w = (size.width() - (margins.left() + margins.right())) * ratio;
-	unsigned int h = (size.height() - (margins.top() + margins.bottom())) * ratio;
 
-	QueueCEFTask([this, handle, w, h]() {
+	QueueCEFTask([this, handle]() {
 		CefBrowserSettings browserSettings;
 
 		CefWindowInfo windowInfo;
 #if CHROME_VERSION_BUILD >= 6533
 		windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
 #endif
-		windowInfo.SetAsChild((CefWindowHandle)handle, CefRect(0, 0, w, h));
+		// Set the initial size to 1x1, so resize works later
+		// (otherwise floating panels might not have the correct initial size)
+		windowInfo.SetAsChild((CefWindowHandle)handle, CefRect(0, 0, 1, 1));
 
 		CefRefPtr<QCefBrowserClient> browserClient = new QCefBrowserClient(this, script, allowAllPopups_);
 		cefBrowser = CefBrowserHost::CreateBrowserSync(windowInfo, browserClient, url, browserSettings,
@@ -321,6 +322,8 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
 		layout->addWidget(container, 0, 0);
 	}
+
+	resizeBrowser();
 }
 
 bool QCefWidgetInternal::event(QEvent *event)
