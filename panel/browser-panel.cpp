@@ -149,9 +149,6 @@ QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_,
 	layout->setContentsMargins(0, 0, 0, 0);
 	setLayout(layout);
 	updateMargins();
-
-	window = new QWindow();
-	window->setFlags(Qt::FramelessWindowHint);
 }
 
 QCefWidgetInternal::~QCefWidgetInternal()
@@ -224,6 +221,11 @@ void QCefWidgetInternal::closeBrowser()
 		cv.wait(lk, [this] { return cefReady; });
 	}
 
+	delete container;
+	container = nullptr;
+	delete window;
+	window = nullptr;
+
 	state = State::Initial;
 }
 
@@ -285,6 +287,8 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		os_event_wait(cef_started_event);
 	}
 
+	window = new QWindow();
+	window->setFlags(Qt::FramelessWindowHint);
 	WId handle = window->winId();
 
 	QueueCEFTask([this, handle]() {
@@ -317,11 +321,9 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		cv.wait(lk, [this] { return cefReady; });
 	}
 
-	if (!container) {
-		container = QWidget::createWindowContainer(window);
-		QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
-		layout->addWidget(container, 0, 0);
-	}
+	container = QWidget::createWindowContainer(window);
+	QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
+	layout->addWidget(container, 0, 0);
 
 	resizeBrowser();
 }
