@@ -63,8 +63,40 @@ void BrowserApp::OnBeforeChildProcessLaunch(CefRefPtr<CefCommandLine> command_li
 #endif
 }
 
+static float ParseEnvScale(const char *name, float defaultValue = 1.0)
+{
+	const char *value = std::getenv(name);
+	if (value) {
+		try {
+			return std::stof(value);
+		} catch (std::invalid_argument &) {
+		} catch (std::out_of_range &) {
+		}
+	}
+	return defaultValue;
+}
+
 void BrowserApp::OnBeforeCommandLineProcessing(const CefString &, CefRefPtr<CefCommandLine> command_line)
 {
+#ifdef _WIN32
+	// Windows handles per-monitor scaling by default
+	// Don't override that unless the user sets OBS_BROWSER_DOCK_SCALE
+	float defaultScale = -1;
+#else
+	// Other platforms don't handle scaling
+	// Set the scale factor based on DOCK_SCALE * PIXEL_RATIO
+	float defaultScale = 1.0;
+#endif
+	float scale = ParseEnvScale("OBS_BROWSER_DOCK_SCALE", defaultScale);
+	if (scale > 0) {
+		float ratio = ParseEnvScale("OBS_PRIMARY_PIXEL_RATIO", -1);
+		if (ratio > 0) {
+			scale *= ratio;
+			command_line->AppendSwitchWithValue("--force-device-scale-factor",
+							    std::to_string(scale).c_str());
+		}
+	}
+
 	if (!shared_texture_available) {
 		bool enableGPU = command_line->HasSwitch("enable-gpu");
 		CefString type = command_line->GetSwitchValue("type");
