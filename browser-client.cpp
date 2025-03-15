@@ -657,6 +657,9 @@ void BrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, 
 bool BrowserClient::OnConsoleMessage(CefRefPtr<CefBrowser>, cef_log_severity_t level, const CefString &message,
 				     const CefString &source, int line)
 {
+	if (!valid())
+		return false;
+
 	int errorLevel = LOG_INFO;
 	const char *code = "Info";
 	switch (level) {
