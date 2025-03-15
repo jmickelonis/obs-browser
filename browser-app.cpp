@@ -16,6 +16,7 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+#include <QApplication>
 #include "browser-app.hpp"
 #include "browser-version.h"
 #include <nlohmann/json.hpp>
@@ -95,6 +96,14 @@ void BrowserApp::OnBeforeCommandLineProcessing(const CefString &, CefRefPtr<CefC
 			command_line->AppendSwitchWithValue("--force-device-scale-factor",
 							    std::to_string(scale).c_str());
 		}
+	}
+
+	// If a switch wasn't explicity provided,
+	// enable or disable acceleration according to the environment
+	if (!command_line->HasSwitch("enable-gpu") && !command_line->HasSwitch("disable-gpu")) {
+		const char *s = getenv("OBS_BROWSER_ENABLE_GPU");
+		bool b = s ? QVariant(s).toBool() : true;
+		command_line->AppendSwitch(b ? "--enable-gpu" : "--disable-gpu");
 	}
 
 	if (!shared_texture_available) {
