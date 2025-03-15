@@ -231,6 +231,13 @@ bool QCefBrowserClient::OnSetFocus(CefRefPtr<CefBrowser>, CefFocusHandler::Focus
 	}
 }
 
+void QCefBrowserClient::OnGotFocus(CefRefPtr<CefBrowser> browser)
+{
+	// Normally, focusing something in one panel doesn't remove focus from another
+	// This fixes that for whatever reason
+	browser->GetHost()->SetFocus(true);
+}
+
 void QCefBrowserClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>,
 					    CefRefPtr<CefContextMenuParams>, CefRefPtr<CefMenuModel> model)
 {
