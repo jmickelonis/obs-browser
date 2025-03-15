@@ -47,11 +47,10 @@ public:
 	virtual bool zoomPage(int direction) override;
 	virtual void executeJavaScript(const std::string &script) override;
 
-	void Resize();
-
 private:
 	QPointer<QWindow> window;
 	QPointer<QWidget> container;
+	CefWindowHandle cefWindowHandle = 0;
 	enum State { Closing = -1, Initial, Active };
 	volatile State state = State::Initial;
 	std::mutex m;

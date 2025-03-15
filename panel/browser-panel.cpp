@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QGridLayout>
 #include <QStyleOption>
+#include <QResizeEvent>
 
 #ifdef ENABLE_BROWSER_QT_LOOP
 #include <QEventLoop>
@@ -171,8 +172,6 @@ void QCefWidgetInternal::closeBrowser()
 	cefReady = false;
 
 	QueueCEFTask([this]() {
-		CefRefPtr<CefBrowserHost> browserHost = cefBrowser->GetHost();
-
 		/* So you're probably wondering what's going on here.  If you
 		* call CefBrowserHost::CloseBrowser, and it fails to unload
 		* the web page *before* WM_NCDESTROY is called on the browser
@@ -190,24 +189,26 @@ void QCefWidgetInternal::closeBrowser()
 		* the browser from the widget.  To do this, we hide it, then
 		* remove its parent. */
 #ifdef _WIN32
-		HWND hwnd = (HWND)browserHost->GetWindowHandle();
+		HWND hwnd = (HWND)cefWindowHandle;
 		if (hwnd) {
 			ShowWindow(hwnd, SW_HIDE);
 			SetParent(hwnd, nullptr);
 		}
 #elif __APPLE__
 		// felt hacky, might delete later
-		void *view = (id)browserHost->GetWindowHandle();
+		void *view = (id)cefWindowHandle;
 		if (*((bool *)view))
 			((void (*)(id, SEL))objc_msgSend)((id)view, sel_getUid("removeFromSuperview"));
 #endif
 
+		CefRefPtr<CefBrowserHost> browserHost = cefBrowser->GetHost();
 		QCefBrowserClient *browserClient =
 			reinterpret_cast<QCefBrowserClient *>(browserHost->GetClient().get());
 		browserClient->widget = nullptr;
 
 		browserHost->CloseBrowser(true);
 		cefBrowser = nullptr;
+		cefWindowHandle = 0;
 
 		// Notify Qt
 		{
@@ -229,25 +230,18 @@ void QCefWidgetInternal::closeBrowser()
 void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
 {
 	QWidget::resizeEvent(event);
-	Resize();
-}
 
-void QCefWidgetInternal::Resize()
-{
-	if (!container)
+	if (!cefWindowHandle)
 		return;
 
-	QSize size = container->size() * devicePixelRatioF();
-	unsigned int w = size.width();
-	unsigned int h = size.height();
+	QSize size = event->size();
+	QMargins margins = contentsMargins();
+	qreal ratio = devicePixelRatioF();
+	unsigned int w = (size.width() - (margins.left() + margins.right())) * ratio;
+	unsigned int h = (size.height() - (margins.top() + margins.bottom())) * ratio;
 
 	QueueCEFTask([this, w, h]() {
-		if (!cefBrowser)
-			return;
-
-		CefWindowHandle handle = cefBrowser->GetHost()->GetWindowHandle();
-
-		if (!handle)
+		if (!cefWindowHandle)
 			return;
 
 #ifdef _WIN32
@@ -264,7 +258,7 @@ void QCefWidgetInternal::Resize()
 		changes.y = 0;
 		changes.width = w;
 		changes.height = h;
-		XConfigureWindow(xDisplay, (Window)handle, CWX | CWY | CWHeight | CWWidth, &changes);
+		XConfigureWindow(xDisplay, (Window)cefWindowHandle, CWX | CWY | CWHeight | CWWidth, &changes);
 #if CHROME_VERSION_BUILD >= 4638
 		XSync(xDisplay, false);
 #endif
@@ -289,20 +283,24 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 
 	WId handle = window->winId();
 	QSize size = this->size();
-	size *= devicePixelRatioF();
+	QMargins margins = contentsMargins();
+	qreal ratio = devicePixelRatioF();
+	unsigned int w = (size.width() - (margins.left() + margins.right())) * ratio;
+	unsigned int h = (size.height() - (margins.top() + margins.bottom())) * ratio;
 
-	QueueCEFTask([this, handle, size]() {
+	QueueCEFTask([this, handle, w, h]() {
 		CefBrowserSettings browserSettings;
 
 		CefWindowInfo windowInfo;
 #if CHROME_VERSION_BUILD >= 6533
 		windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
 #endif
-		windowInfo.SetAsChild((CefWindowHandle)handle, CefRect(0, 0, size.width(), size.height()));
+		windowInfo.SetAsChild((CefWindowHandle)handle, CefRect(0, 0, w, h));
 
 		CefRefPtr<QCefBrowserClient> browserClient = new QCefBrowserClient(this, script, allowAllPopups_);
 		cefBrowser = CefBrowserHost::CreateBrowserSync(windowInfo, browserClient, url, browserSettings,
 							       CefRefPtr<CefDictionaryValue>(), rqc);
+		cefWindowHandle = cefBrowser->GetHost()->GetWindowHandle();
 
 		// Notify Qt
 		{
@@ -322,15 +320,7 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		container = QWidget::createWindowContainer(window);
 		QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
 		layout->addWidget(container, 0, 0);
-
-		// Set the initial container size, since it won't be automatic
-		const QSize size = this->size();
-		const QMargins margins = contentsMargins();
-		container->resize(size.width() - (margins.left() + margins.right()),
-				  size.height() - (margins.top() + margins.bottom()));
 	}
-
-	Resize();
 }
 
 bool QCefWidgetInternal::event(QEvent *event)
