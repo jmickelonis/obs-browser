@@ -302,6 +302,7 @@ static void BrowserInit(void)
 	CefString(&settings.log_file) = log_path_abs;
 	settings.windowless_rendering_enabled = true;
 	settings.no_sandbox = true;
+	settings.background_color = 0xFF000000;
 
 	uint32_t obs_ver = obs_get_version();
 	uint32_t obs_maj = obs_ver >> 24;
