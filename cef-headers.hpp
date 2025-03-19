@@ -65,3 +65,5 @@
 #else
 #pragma GCC diagnostic pop
 #endif
+
+#define BROWSER_BG_COLOR 0xFF000000

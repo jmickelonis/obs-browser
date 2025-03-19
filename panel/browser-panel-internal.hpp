@@ -94,6 +94,6 @@ private:
 	void resizeBrowser(QResizeEvent *event = nullptr);
 	void showContainer();
 	void updateMargins();
-	void onBrowserClosed();
+	void onBrowserClosed(CefRefPtr<CefBrowser> browser);
 	void onLoadingFinished();
 };

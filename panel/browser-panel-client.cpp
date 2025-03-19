@@ -232,7 +232,7 @@ bool QCefBrowserClient::OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>
 void QCefBrowserClient::OnBeforeClose(CefRefPtr<CefBrowser> browser)
 {
 	if (widget)
-		widget->onBrowserClosed();
+		widget->onBrowserClosed(browser);
 }
 
 bool QCefBrowserClient::OnSetFocus(CefRefPtr<CefBrowser>, CefFocusHandler::FocusSource source)
@@ -339,21 +339,23 @@ bool QCefBrowserClient::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefR
 	if (command_id < MENU_ID_CUSTOM_FIRST)
 		return false;
 	CefRefPtr<CefBrowserHost> host = browser->GetHost();
-	CefWindowInfo windowInfo;
-	QPoint pos;
 	switch (command_id) {
-	case MENU_ITEM_DEVTOOLS:
+	case MENU_ITEM_DEVTOOLS: {
+		CefWindowInfo windowInfo;
 #if defined(_WIN32) && CHROME_VERSION_BUILD < 6533
 		windowInfo.SetAsPopup(host->GetWindowHandle(), "");
 #endif
-		pos = widget->mapToGlobal(QPoint(0, 0));
+		QPoint pos = widget->mapToGlobal(QPoint(0, 0));
 		windowInfo.bounds.x = pos.x();
 		windowInfo.bounds.y = pos.y() + 30;
 		windowInfo.bounds.width = 900;
 		windowInfo.bounds.height = 700;
-		host->ShowDevTools(windowInfo, host->GetClient(), CefBrowserSettings(),
+		CefBrowserSettings browserSettings;
+		browserSettings.background_color = BROWSER_BG_COLOR;
+		host->ShowDevTools(windowInfo, host->GetClient(), browserSettings,
 				   {params.get()->GetXCoord(), params.get()->GetYCoord()});
 		return true;
+	}
 	case MENU_ITEM_MUTE:
 		host->SetAudioMuted(!host->IsAudioMuted());
 		return true;

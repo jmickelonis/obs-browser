@@ -298,8 +298,11 @@ void QCefWidgetInternal::closeBrowser()
 /* This is called from the client.
    We wait for this, in order to avoid closing the window too early,
    which can cause the GPU process to crash. */
-void QCefWidgetInternal::onBrowserClosed()
+void QCefWidgetInternal::onBrowserClosed(CefRefPtr<CefBrowser> browser)
 {
+	if (!browser->IsSame(cefBrowser))
+		return;
+
 	CefRefPtr<CefBrowserHost> browserHost = cefBrowser->GetHost();
 	QCefBrowserClient *browserClient = reinterpret_cast<QCefBrowserClient *>(browserHost->GetClient().get());
 	browserClient->widget = nullptr;
@@ -379,6 +382,7 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 
 	QueueCEFTask([this, handle]() {
 		CefBrowserSettings browserSettings;
+		browserSettings.background_color = BROWSER_BG_COLOR;
 
 		CefWindowInfo windowInfo;
 #if CHROME_VERSION_BUILD >= 6533
