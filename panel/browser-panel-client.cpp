@@ -11,6 +11,7 @@
 #include <QRegularExpression>
 #include <QLabel>
 #include <QClipboard>
+#include <QWindow>
 
 #include <obs-module.h>
 #ifdef _WIN32
@@ -245,7 +246,11 @@ bool QCefBrowserClient::OnSetFocus(CefRefPtr<CefBrowser>, CefFocusHandler::Focus
 	case FOCUS_SOURCE_NAVIGATION:
 		return true;
 	default:
-		return false;
+		if (widget) {
+			QWindow *window = widget->window;
+			return !(window && window->isActive());
+		}
+		return true;
 	}
 }
 
