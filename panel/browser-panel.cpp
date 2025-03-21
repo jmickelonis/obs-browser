@@ -412,6 +412,7 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	}
 
 	container = QWidget::createWindowContainer(window);
+	container->setAttribute(Qt::WA_DontCreateNativeAncestors);
 	container->setVisible(false);
 	QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
 	layout->addWidget(container, 0, 0);
