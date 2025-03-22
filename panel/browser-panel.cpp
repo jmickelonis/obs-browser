@@ -241,7 +241,9 @@ void QCefWidgetInternal::closeBrowser()
 
 	state = State::Closing;
 	cefReady = false;
-	container->setVisible(false);
+
+	if (container)
+		container->setVisible(false);
 
 	if (showTimer) {
 		delete showTimer;
@@ -287,8 +289,10 @@ void QCefWidgetInternal::closeBrowser()
 		cv.wait(lk, [this] { return cefReady; });
 	}
 
-	delete container;
-	container = nullptr;
+	if (container) {
+		delete container;
+		container = nullptr;
+	}
 	delete window;
 	window = nullptr;
 
@@ -340,8 +344,8 @@ void QCefWidgetInternal::resizeBrowser(QResizeEvent *event)
 			return;
 
 #ifdef _WIN32
-		SetWindowPos((HWND)handle, nullptr, 0, 0, w, h, SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
-		SendMessage((HWND)handle, WM_SIZE, 0, MAKELPARAM(w, h));
+		SetWindowPos((HWND)cefWindowHandle, nullptr, 0, 0, w, h, SWP_NOMOVE | SWP_NOOWNERZORDER | SWP_NOZORDER);
+		SendMessage((HWND)cefWindowHandle, WM_SIZE, 0, MAKELPARAM(w, h));
 #else
 		Display *xDisplay = cef_get_xdisplay();
 
@@ -369,7 +373,6 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		return;
 
 	state = State::Loading;
-	cefReady = false;
 
 	if (os_event_try(cef_started_event) != 0) {
 		obs_browser_initialize();
@@ -397,32 +400,26 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 							       CefRefPtr<CefDictionaryValue>(), rqc);
 		cefWindowHandle = cefBrowser->GetHost()->GetWindowHandle();
 
-		// Notify Qt
-		{
-			std::lock_guard<std::mutex> lk(m);
-			cefReady = true;
-		}
-		cv.notify_one();
+		QTimer::singleShot(0, this, [this, handle]() {
+			if (!window || this->window->winId() != handle)
+				return;
+
+			container = QWidget::createWindowContainer(window);
+			container->setAttribute(Qt::WA_DontCreateNativeAncestors);
+			container->setVisible(false);
+			QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
+			layout->addWidget(container, 0, 0);
+
+			resizeBrowser();
+
+			if (state == State::Loaded)
+				// Finished already
+				showContainer();
+		});
 	});
 
-	// Wait for CEF
-	{
-		std::unique_lock<std::mutex> lk(m);
-		cv.wait(lk, [this] { return cefReady; });
-	}
-
-	container = QWidget::createWindowContainer(window);
-	container->setAttribute(Qt::WA_DontCreateNativeAncestors);
-	container->setVisible(false);
 	QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
-	layout->addWidget(container, 0, 0);
 	layout->addWidget(new ProgressWidget, 0, 0, Qt::AlignCenter);
-
-	resizeBrowser();
-
-	if (state == State::Loaded)
-		// Finished already
-		showContainer();
 }
 
 void QCefWidgetInternal::onLoadingFinished()
@@ -451,7 +448,7 @@ void QCefWidgetInternal::showContainer()
 		showTimer = nullptr;
 
 		// Dispose of the progress indicator
-		QLayoutItem *child = layout()->takeAt(1);
+		QLayoutItem *child = layout()->takeAt(0);
 		delete child->widget();
 		delete child;
 
