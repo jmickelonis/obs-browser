@@ -61,10 +61,6 @@ public:
 				   CefRefPtr<CefDictionaryValue> &extra_info, bool *no_javascript_access) override;
 	virtual void OnBeforeClose(CefRefPtr<CefBrowser> browser) override;
 
-	/* CefFocusHandler */
-	virtual bool OnSetFocus(CefRefPtr<CefBrowser> browser, CefFocusHandler::FocusSource source) override;
-	virtual void OnGotFocus(CefRefPtr<CefBrowser> browser) override;
-
 	/* CefContextMenuHandler */
 	virtual void OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
 					 CefRefPtr<CefContextMenuParams> params,

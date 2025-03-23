@@ -236,31 +236,6 @@ void QCefBrowserClient::OnBeforeClose(CefRefPtr<CefBrowser> browser)
 		widget->onBrowserClosed(browser);
 }
 
-bool QCefBrowserClient::OnSetFocus(CefRefPtr<CefBrowser>, CefFocusHandler::FocusSource source)
-{
-	/* Don't steal focus when the webpage navigates. This is especially
-	   obvious on startup when the user has many browser docks defined,
-	   as each one will steal focus one by one, resulting in poor UX.
-	 */
-	switch (source) {
-	case FOCUS_SOURCE_NAVIGATION:
-		return true;
-	default:
-		if (widget) {
-			QWindow *window = widget->window;
-			return !(window && window->isActive());
-		}
-		return true;
-	}
-}
-
-void QCefBrowserClient::OnGotFocus(CefRefPtr<CefBrowser> browser)
-{
-	// Normally, focusing something in one panel doesn't remove focus from another
-	// This fixes that for whatever reason
-	browser->GetHost()->SetFocus(true);
-}
-
 void QCefBrowserClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>,
 					    CefRefPtr<CefContextMenuParams>, CefRefPtr<CefMenuModel> model)
 {
