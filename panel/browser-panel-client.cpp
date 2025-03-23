@@ -93,7 +93,14 @@ void QCefBrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefSt
 					   .toUtf8()
 					   .constData();
 
-#if defined(_WIN32)
+#if CEF_USE_VIEWS
+		CefRefPtr<CefBrowserView> browserView = CefBrowserView::GetForBrowser(browser);
+		if (!browserView)
+			return;
+		CefRefPtr<CefWindow> window = browserView->GetWindow();
+		if (window)
+			window->SetTitle(newTitle);
+#elif defined(_WIN32)
 		CefWindowHandle handl = browser->GetHost()->GetWindowHandle();
 		std::wstring str_title = newTitle;
 		SetWindowTextW((HWND)handl, str_title.c_str());
