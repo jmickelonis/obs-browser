@@ -44,7 +44,11 @@
 #include "include/wrapper/cef_library_loader.h"
 #endif
 
+#ifdef _WIN32
+#define CEF_USE_VIEWS false
+#else
 #define CEF_USE_VIEWS true
+#endif
 
 #if CEF_USE_VIEWS
 #include "include/views/cef_browser_view.h"

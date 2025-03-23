@@ -277,21 +277,47 @@ void QCefWidgetInternal::closeBrowser()
 		showTimer = nullptr;
 	}
 
-	if (container) {
-		container->setVisible(false);
-		delete container;
-		container = nullptr;
-	}
+	cefReady = false;
 
-	if (window) {
-		window->close();
-		delete window;
-		window = nullptr;
-	}
+	if (container)
+		container->setVisible(false);
+
+	if (window)
+		window->setVisible(false);
 
 	QueueCEFTask([this]() {
 		CefRefPtr<CefBrowserHost> host = cefBrowser->GetHost();
 		host->WasHidden(true);
+
+		/* So you're probably wondering what's going on here.  If you
+		 * call CefBrowserHost::CloseBrowser, and it fails to unload
+		 * the web page *before* WM_NCDESTROY is called on the browser
+		 * HWND, it will call an internal CEF function
+		 * CefBrowserPlatformDelegateNativeWin::CloseHostWindow, which
+		 * will attempt to close the browser's main window itself.
+		 * Problem is, this closes the root window containing the
+		 * browser's HWND rather than the browser's specific HWND for
+		 * whatever mysterious reason.  If the browser is in a dock
+		 * widget, then the window it closes is, unfortunately, the
+		 * main program's window, causing the entire program to shut
+		 * down.
+		 *
+		 * So, instead, before closing the browser, we need to decouple
+		 * the browser from the widget.  To do this, we hide it, then
+		 * remove its parent. */
+#ifdef _WIN32
+		HWND hwnd = (HWND)host->GetWindowHandle();
+		if (hwnd) {
+			ShowWindow(hwnd, SW_HIDE);
+			SetParent(hwnd, nullptr);
+		}
+#elif __APPLE__
+		// felt hacky, might delete later
+		void *view = (id)host->GetWindowHandle();
+		if (*((bool *)view))
+			((void (*)(id, SEL))objc_msgSend)((id)view, sel_getUid("removeFromSuperview"));
+#endif
+
 		host->CloseBrowser(true);
 	});
 
@@ -299,6 +325,16 @@ void QCefWidgetInternal::closeBrowser()
 	{
 		std::unique_lock<std::mutex> lk(m);
 		cv.wait(lk, [this] { return cefReady; });
+	}
+
+	if (container) {
+		delete container;
+		container = nullptr;
+	}
+
+	if (window) {
+		delete window;
+		window = nullptr;
 	}
 
 	state = State::Initial;
@@ -381,6 +417,10 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 #if CHROME_VERSION_BUILD >= 6533
 		windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
 #endif
+#ifdef _WIN32
+		// Use the popup style so it doesn't briefly appear before being embedded
+		windowInfo.style = WS_POPUP;
+#endif
 		// Set the initial size to 1x1, so resize works later
 		// (otherwise floating panels might not have the correct initial size)
 		windowInfo.bounds = {-1, -1, 1, 1};
@@ -394,7 +434,7 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 			if (window)
 				return;
 
-			window = QWindow::fromWinId(windowHandle);
+			window = QWindow::fromWinId((WId)windowHandle);
 
 			container = QWidget::createWindowContainer(window);
 			// container->setAttribute(Qt::WA_DontCreateNativeAncestors);
