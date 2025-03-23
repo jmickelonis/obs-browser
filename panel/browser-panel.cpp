@@ -287,7 +287,6 @@ void QCefWidgetInternal::closeBrowser()
 
 	QueueCEFTask([this]() {
 		CefRefPtr<CefBrowserHost> host = cefBrowser->GetHost();
-		host->WasHidden(true);
 
 		/* So you're probably wondering what's going on here.  If you
 		 * call CefBrowserHost::CloseBrowser, and it fails to unload
