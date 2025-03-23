@@ -83,7 +83,6 @@ private:
 
 	QPointer<QWindow> window;
 	QPointer<QWidget> container;
-	CefWindowHandle cefWindowHandle = 0;
 	enum State { Closing = -1, Initial, Loading, Loaded };
 	volatile State state = State::Initial;
 	QTimer *showTimer = nullptr;
