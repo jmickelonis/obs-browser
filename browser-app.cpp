@@ -145,11 +145,6 @@ void BrowserApp::OnBeforeCommandLineProcessing(const CefString &, CefRefPtr<CefC
 #ifdef _WIN32
 		if (b)
 			command_line->AppendSwitchWithValue("enable-features", "RawDraw");
-#elif defined(__linux__)
-		if (b)
-			// Using Vulkan avoids some issues with hanging
-			// (will this run like crap on Nvidia?)
-			command_line->AppendSwitchWithValue("enable-features", "Vulkan");
 #endif
 	}
 
