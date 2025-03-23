@@ -208,6 +208,37 @@ void ProgressWidget::paintEvent(QPaintEvent *)
 	painter.drawPath(path);
 }
 
+#if CEF_USE_VIEWS
+BrowserWindowDelegate::BrowserWindowDelegate(CefRefPtr<CefView> view) : view(view) {}
+
+cef_show_state_t BrowserWindowDelegate::GetInitialShowState(CefRefPtr<CefWindow>)
+{
+	return CEF_SHOW_STATE_MINIMIZED;
+}
+
+bool BrowserWindowDelegate::IsFrameless(CefRefPtr<CefWindow>)
+{
+	// For some reason going frameless prevents presses near the border
+	return false;
+}
+
+bool BrowserWindowDelegate::CanResize(CefRefPtr<CefWindow>)
+{
+	return false;
+}
+
+void BrowserWindowDelegate::OnWindowCreated(CefRefPtr<CefWindow> window)
+{
+	window->SetBackgroundColor(BROWSER_BG_COLOR);
+	window->AddChildView(view);
+}
+
+void BrowserWindowDelegate::OnWindowDestroyed(CefRefPtr<CefWindow>)
+{
+	view = nullptr;
+}
+#endif
+
 QCefWidgetInternal::QCefWidgetInternal(QWidget *parent, const std::string &url_, CefRefPtr<CefRequestContext> rqc_)
 	: QCefWidget(parent),
 	  url(url_),
@@ -286,6 +317,9 @@ void QCefWidgetInternal::onBrowserClosed(CefRefPtr<CefBrowser> browser)
 	browserClient->widget = nullptr;
 
 	cefBrowser = nullptr;
+#if CEF_USE_VIEWS
+	cefWindow = nullptr;
+#endif
 
 	// Notify Qt
 	{
@@ -332,6 +366,17 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		CefBrowserSettings browserSettings;
 		browserSettings.background_color = BROWSER_BG_COLOR;
 
+		CefRefPtr<QCefBrowserClient> browserClient = new QCefBrowserClient(this, script, allowAllPopups_);
+		CefWindowHandle windowHandle;
+
+#if CEF_USE_VIEWS
+		CefRefPtr<CefBrowserView> browserView =
+			CefBrowserView::CreateBrowserView(browserClient, url, browserSettings, nullptr, rqc, nullptr);
+		browserView->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
+		cefWindow = CefWindow::CreateTopLevelWindow(new BrowserWindowDelegate(browserView));
+		cefBrowser = browserView->GetBrowser();
+		windowHandle = cefWindow->GetWindowHandle();
+#else
 		CefWindowInfo windowInfo;
 #if CHROME_VERSION_BUILD >= 6533
 		windowInfo.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
@@ -340,10 +385,10 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		// (otherwise floating panels might not have the correct initial size)
 		windowInfo.bounds = {-1, -1, 1, 1};
 
-		CefRefPtr<QCefBrowserClient> browserClient = new QCefBrowserClient(this, script, allowAllPopups_);
 		cefBrowser = CefBrowserHost::CreateBrowserSync(windowInfo, browserClient, url, browserSettings,
 							       CefRefPtr<CefDictionaryValue>(), rqc);
-		CefWindowHandle windowHandle = cefBrowser->GetHost()->GetWindowHandle();
+		windowHandle = cefBrowser->GetHost()->GetWindowHandle();
+#endif
 
 		QTimer::singleShot(0, this, [this, windowHandle]() {
 			if (window)
@@ -376,6 +421,9 @@ void QCefWidgetInternal::onLoadingFinished()
 		return;
 
 	state = State::Loaded;
+#if CEF_USE_VIEWS
+	cefWindow->Show();
+#endif
 	QTimer::singleShot(0, this, &QCefWidgetInternal::showContainer);
 }
 

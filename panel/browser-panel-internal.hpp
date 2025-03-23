@@ -53,6 +53,26 @@ private:
 	QPainterPath path;
 };
 
+#if CEF_USE_VIEWS
+class BrowserWindowDelegate : public CefWindowDelegate {
+
+public:
+	BrowserWindowDelegate(CefRefPtr<CefView>);
+
+	virtual cef_show_state_t GetInitialShowState(CefRefPtr<CefWindow>) override;
+	virtual bool IsFrameless(CefRefPtr<CefWindow>) override;
+	virtual bool CanResize(CefRefPtr<CefWindow>) override;
+	virtual void OnWindowCreated(CefRefPtr<CefWindow>) override;
+	virtual void OnWindowDestroyed(CefRefPtr<CefWindow>) override;
+
+private:
+	CefRefPtr<CefView> view;
+
+	IMPLEMENT_REFCOUNTING(BrowserWindowDelegate);
+	DISALLOW_COPY_AND_ASSIGN(BrowserWindowDelegate);
+};
+#endif
+
 class QCefWidgetInternal : public QCefWidget {
 	Q_OBJECT
 
@@ -83,6 +103,10 @@ private:
 
 	QPointer<QWindow> window;
 	QPointer<QWidget> container;
+#if CEF_USE_VIEWS
+	CefRefPtr<CefWindow> cefWindow;
+#endif
+
 	enum State { Closing = -1, Initial, Loading, Loaded };
 	volatile State state = State::Initial;
 	QTimer *showTimer = nullptr;

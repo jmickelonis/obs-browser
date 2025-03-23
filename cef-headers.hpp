@@ -44,6 +44,13 @@
 #include "include/wrapper/cef_library_loader.h"
 #endif
 
+#define CEF_USE_VIEWS true
+
+#if CEF_USE_VIEWS
+#include "include/views/cef_browser_view.h"
+#include "include/views/cef_window.h"
+#endif
+
 #if CHROME_VERSION_BUILD >= 4430
 #define ENABLE_WASHIDDEN 1
 #else
@@ -66,4 +73,8 @@
 #pragma GCC diagnostic pop
 #endif
 
+#if CEF_USE_VIEWS
+#define BROWSER_BG_COLOR 0x00000000
+#else
 #define BROWSER_BG_COLOR 0xFF000000
+#endif
