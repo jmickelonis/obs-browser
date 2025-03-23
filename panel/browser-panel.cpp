@@ -372,7 +372,7 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 #if CEF_USE_VIEWS
 		CefRefPtr<CefBrowserView> browserView =
 			CefBrowserView::CreateBrowserView(browserClient, url, browserSettings, nullptr, rqc, nullptr);
-		browserView->SetBackgroundColor(CefColorSetARGB(0, 0, 0, 0));
+		browserView->SetBackgroundColor(BROWSER_BG_COLOR);
 		cefWindow = CefWindow::CreateTopLevelWindow(new BrowserWindowDelegate(browserView));
 		cefBrowser = browserView->GetBrowser();
 		windowHandle = cefWindow->GetWindowHandle();
