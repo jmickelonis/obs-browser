@@ -43,6 +43,7 @@ foreach(helper IN LISTS helper_suffixes)
                                                     "${CMAKE_CURRENT_SOURCE_DIR}/obs-browser-page")
 
   target_link_libraries(${target_name} PRIVATE CEF::Wrapper nlohmann_json::nlohmann_json)
+  target_link_libraries(${target_name} PRIVATE OBS::libobs Qt::Widgets)
 
   set_target_properties(
     ${target_name}
