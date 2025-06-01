@@ -70,7 +70,7 @@ public:
 					 CefRefPtr<CefContextMenuParams> params,
 					 CefRefPtr<CefMenuModel> model) override;
 
-#if defined(_WIN32)
+#ifndef __APPLE__
 	virtual bool RunContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
 				    CefRefPtr<CefContextMenuParams> params, CefRefPtr<CefMenuModel> model,
 				    CefRefPtr<CefRunContextMenuCallback> callback) override;
