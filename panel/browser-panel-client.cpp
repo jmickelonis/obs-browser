@@ -83,7 +83,14 @@ void QCefBrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefSt
 					   .toUtf8()
 					   .constData();
 
-#if defined(_WIN32)
+#if CEF_USE_VIEWS
+		CefRefPtr<CefBrowserView> browserView = CefBrowserView::GetForBrowser(browser);
+		if (!browserView)
+			return;
+		CefRefPtr<CefWindow> window = browserView->GetWindow();
+		if (window)
+			window->SetTitle(newTitle);
+#elif defined(_WIN32)
 		CefWindowHandle handl = browser->GetHost()->GetWindowHandle();
 		std::wstring str_title = newTitle;
 		SetWindowTextW((HWND)handl, str_title.c_str());
@@ -169,6 +176,9 @@ void QCefBrowserClient::OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<Cef
 	dstr_free(&html);
 	bfree(path);
 	bfree(errorPage);
+
+	if (widget)
+		widget->onLoadingFinished();
 }
 
 /* CefLifeSpanHandler */
@@ -217,34 +227,10 @@ bool QCefBrowserClient::OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>
 	return true;
 }
 
-void QCefBrowserClient::OnBeforeClose(CefRefPtr<CefBrowser>)
+void QCefBrowserClient::OnBeforeClose(CefRefPtr<CefBrowser> browser)
 {
-	if (widget) {
-		widget->CloseSafely();
-	}
-}
-
-bool QCefBrowserClient::OnSetFocus(CefRefPtr<CefBrowser>, CefFocusHandler::FocusSource source)
-{
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-	/* Workaround for browser docks flashing/hanging at startup with Qt 6.8.x, introduced
-	 * by commit https://code.qt.io/cgit/qt/qt5.git/commit/?id=bab1fecd556ea561c4a89686293116741acfa1b4.
-	 * Refer to https://bugreports.qt.io/browse/QTBUG-136165.
-	 */
-	UNUSED_PARAMETER(source);
-	return false;
-#else
-	/* Don't steal focus when the webpage navigates. This is especially
-	   obvious on startup when the user has many browser docks defined,
-	   as each one will steal focus one by one, resulting in poor UX.
-	 */
-	switch (source) {
-	case FOCUS_SOURCE_NAVIGATION:
-		return true;
-	default:
-		return false;
-	}
-#endif
+	if (widget)
+		widget->onBrowserClosed(browser);
 }
 
 void QCefBrowserClient::OnBeforeContextMenu(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>,
@@ -330,21 +316,23 @@ bool QCefBrowserClient::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefR
 	if (command_id < MENU_ID_CUSTOM_FIRST)
 		return false;
 	CefRefPtr<CefBrowserHost> host = browser->GetHost();
-	CefWindowInfo windowInfo;
-	QPoint pos;
 	switch (command_id) {
-	case MENU_ITEM_DEVTOOLS:
+	case MENU_ITEM_DEVTOOLS: {
+		CefWindowInfo windowInfo;
 #if defined(_WIN32) && CHROME_VERSION_BUILD < 6533
 		windowInfo.SetAsPopup(host->GetWindowHandle(), "");
 #endif
-		pos = widget->mapToGlobal(QPoint(0, 0));
+		QPoint pos = widget->mapToGlobal(QPoint(0, 0));
 		windowInfo.bounds.x = pos.x();
 		windowInfo.bounds.y = pos.y() + 30;
 		windowInfo.bounds.width = 900;
 		windowInfo.bounds.height = 700;
-		host->ShowDevTools(windowInfo, host->GetClient(), CefBrowserSettings(),
+		CefBrowserSettings browserSettings;
+		browserSettings.background_color = BROWSER_BG_COLOR;
+		host->ShowDevTools(windowInfo, host->GetClient(), browserSettings,
 				   {params.get()->GetXCoord(), params.get()->GetYCoord()});
 		return true;
+	}
 	case MENU_ITEM_MUTE:
 		host->SetAudioMuted(!host->IsAudioMuted());
 		return true;
@@ -396,6 +384,9 @@ void QCefBrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> fra
 		frame->ExecuteJavaScript(widget->script, CefString(), 0);
 	else if (!script.empty())
 		frame->ExecuteJavaScript(script, CefString(), 0);
+
+	if (widget)
+		widget->onLoadingFinished();
 }
 
 bool QCefBrowserClient::OnJSDialog(CefRefPtr<CefBrowser>, const CefString &,
