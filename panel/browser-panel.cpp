@@ -285,8 +285,18 @@ void QCefWidgetInternal::unsetToplevelXdndProxy()
 }
 #endif
 
+static inline void browser_initialize()
+{
+	if (os_event_try(cef_started_event) != 0) {
+		obs_browser_initialize();
+		os_event_wait(cef_started_event);
+	}
+}
+
 void QCefWidgetInternal::Init()
 {
+	browser_initialize();
+
 #ifndef __APPLE__
 	WId handle = window->winId();
 	QSize size = this->size();
@@ -363,6 +373,8 @@ void QCefWidgetInternal::resizeEvent(QResizeEvent *event)
 
 void QCefWidgetInternal::Resize()
 {
+	browser_initialize();
+
 	QSize size = this->size() * devicePixelRatioF();
 
 	bool success = QueueCEFTask([this, size]() {
@@ -411,7 +423,6 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 	QWidget::showEvent(event);
 
 	if (!cefBrowser) {
-		obs_browser_initialize();
 		connect(&timer, &QTimer::timeout, this, &QCefWidgetInternal::Init);
 		timer.start(500);
 		Init();
