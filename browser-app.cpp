@@ -671,7 +671,8 @@ void BrowserApp::WatchCSS()
 	QObject::connect(&watcher, &QFileSystemWatcher::directoryChanged, OnDirectoryChanged);
 	QObject::connect(&watcher, &QFileSystemWatcher::fileChanged, OnFileChanged);
 
-	app.exec();
+	while (cssWatcherThread)
+		app.processEvents();
 }
 
 #ifdef ENABLE_BROWSER_QT_LOOP
