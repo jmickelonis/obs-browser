@@ -547,6 +547,11 @@ void QCefWidgetInternal::executeJavaScript(const std::string &script_)
 	frame->ExecuteJavaScript(script_, url, 0);
 }
 
+void QCefWidgetInternal::postScript(const std::string &script)
+{
+	QueueCEFTask([this, script]() { executeJavaScript(script); });
+}
+
 void QCefWidgetInternal::allowAllPopups(bool allow)
 {
 	allowAllPopups_ = allow;

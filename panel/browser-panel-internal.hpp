@@ -97,6 +97,7 @@ public:
 	virtual void reloadPage() override;
 	virtual bool zoomPage(int direction) override;
 	virtual void executeJavaScript(const std::string &script) override;
+	virtual void postScript(const std::string &script) override;
 
 private:
 	friend class QCefBrowserClient;
