@@ -104,7 +104,7 @@ static float ParseEnvScale(const char *name, float defaultValue = 1.0)
 	return defaultValue;
 }
 
-void BrowserApp::OnBeforeCommandLineProcessing(const CefString &, CefRefPtr<CefCommandLine> command_line)
+void BrowserApp::OnBeforeCommandLineProcessing(const CefString &process_type, CefRefPtr<CefCommandLine> command_line)
 {
 #ifdef _WIN32
 	// Windows handles per-monitor scaling by default
@@ -144,6 +144,14 @@ void BrowserApp::OnBeforeCommandLineProcessing(const CefString &, CefRefPtr<CefC
 		if (!enableGPU && type.empty()) {
 			command_line->AppendSwitch("disable-gpu-compositing");
 		}
+	}
+
+	if (!command_line->HasSwitch("in-process-gpu")) {
+		// Run the GPU in-process by default
+		const char *s = getenv("OBS_BROWSER_IN_PROCESS_GPU");
+		bool b = s ? QVariant(s).toBool() : true;
+		if (b)
+			command_line->AppendSwitch("--in-process-gpu");
 	}
 
 	if (command_line->HasSwitch("disable-features")) {
