@@ -146,13 +146,13 @@ void BrowserApp::OnBeforeCommandLineProcessing(const CefString &process_type, Ce
 		}
 	}
 
-	if (!command_line->HasSwitch("in-process-gpu")) {
-		// Run the GPU in-process by default
-		const char *s = getenv("OBS_BROWSER_IN_PROCESS_GPU");
-		bool b = s ? QVariant(s).toBool() : true;
-		if (b)
-			command_line->AppendSwitch("--in-process-gpu");
-	}
+	// if (!command_line->HasSwitch("in-process-gpu")) {
+	// 	// Run the GPU in-process by default
+	// 	const char *s = getenv("OBS_BROWSER_IN_PROCESS_GPU");
+	// 	bool b = s ? QVariant(s).toBool() : true;
+	// 	if (b)
+	// 		command_line->AppendSwitch("--in-process-gpu");
+	// }
 
 	if (command_line->HasSwitch("disable-features")) {
 		// Don't override existing, as this can break OSR
