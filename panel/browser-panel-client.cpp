@@ -363,35 +363,25 @@ bool QCefBrowserClient::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefR
 	return false;
 }
 
-void QCefBrowserClient::OnLoadStart(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, TransitionType)
-{
-	if (!frame->IsMain())
-		return;
-
-	std::string script = "window.close = () => ";
-	script += "console.log(";
-	script += "'OBS browser docks cannot be closed using JavaScript.'";
-	script += ");";
-
-	// Attach the url to the body element, so CSS can query it (data-url attribute)
-	std::string encodedURL = CefURIEncode(frame->GetURL(), false).ToString();
-	script += "var body = document.querySelector('body');"
-		  "if (body)"
-		  "	body.dataset.url = decodeURIComponent('" +
-		  encodedURL + "');";
-
-	frame->ExecuteJavaScript(script, "", 0);
-}
-
 void QCefBrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int)
 {
 	if (!frame->IsMain())
 		return;
 
+	std::string encodedURL = CefURIEncode(frame->GetURL(), false).ToString();
+	std::string script = "window.close = () => "
+			     "console.log('OBS browser docks cannot be closed using JavaScript.');"
+			     // Attach the url to the body element, so CSS can query it (data-url attribute)
+			     "{var body = document.querySelector('body');"
+			     "if (body) body.dataset.url = decodeURIComponent('" +
+			     encodedURL + "');}";
+
 	if (widget && !widget->script.empty())
-		frame->ExecuteJavaScript(widget->script, CefString(), 0);
-	else if (!script.empty())
-		frame->ExecuteJavaScript(script, CefString(), 0);
+		script += widget->script;
+	else if (!this->script.empty())
+		script += this->script;
+
+	frame->ExecuteJavaScript(script, "", 0);
 
 	if (widget)
 		widget->onLoadingFinished();
