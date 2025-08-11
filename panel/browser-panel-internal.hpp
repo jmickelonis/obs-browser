@@ -115,6 +115,7 @@ private:
 	std::condition_variable cv;
 	bool cefReady = false;
 
+	void createBrowser();
 	void resizeBrowser(QResizeEvent *event = nullptr);
 	void showContainer();
 	void updateMargins();

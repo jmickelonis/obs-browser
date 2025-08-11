@@ -395,7 +395,18 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 		os_event_wait(cef_started_event);
 	}
 
+	createBrowser();
+
+	QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
+	layout->addWidget(new ProgressWidget, 0, 0, Qt::AlignCenter);
+}
+
+void QCefWidgetInternal::createBrowser()
+{
 	QueueCEFTask([this]() {
+		if (state != State::Loading)
+			return;
+
 		CefBrowserSettings browserSettings;
 		browserSettings.background_color = BROWSER_BG_COLOR;
 
@@ -405,6 +416,14 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 #if CEF_USE_VIEWS
 		CefRefPtr<CefBrowserView> browserView =
 			CefBrowserView::CreateBrowserView(browserClient, url, browserSettings, nullptr, rqc, nullptr);
+
+		if (!browserView) {
+			// Sometimes returns a nullptr right after CefInitialize
+			// Submit another task and try again
+			createBrowser();
+			return;
+		}
+
 		browserView->SetBackgroundColor(BROWSER_BG_COLOR);
 		cefWindow = CefWindow::CreateTopLevelWindow(new BrowserWindowDelegate(browserView));
 		cefBrowser = browserView->GetBrowser();
@@ -446,9 +465,6 @@ void QCefWidgetInternal::showEvent(QShowEvent *event)
 				showContainer();
 		});
 	});
-
-	QGridLayout *layout = static_cast<QGridLayout *>(this->layout());
-	layout->addWidget(new ProgressWidget, 0, 0, Qt::AlignCenter);
 }
 
 void QCefWidgetInternal::onLoadingFinished()
