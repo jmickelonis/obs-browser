@@ -363,6 +363,19 @@ bool QCefBrowserClient::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefR
 	return false;
 }
 
+void QCefBrowserClient::OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
+				    TransitionType transition_type)
+{
+	if (!widget || !frame->IsMain())
+		return;
+
+	std::string script = widget->preLoadScript;
+	if (script.empty())
+		return;
+
+	frame->ExecuteJavaScript(script, "", 0);
+}
+
 void QCefBrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int)
 {
 	if (!frame->IsMain())

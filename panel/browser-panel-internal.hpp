@@ -91,6 +91,7 @@ public:
 	virtual bool event(QEvent *event) override;
 
 	virtual void setURL(const std::string &url) override;
+	virtual void setPreLoadScript(const std::string &script) override;
 	virtual void setStartupScript(const std::string &script) override;
 	virtual void allowAllPopups(bool allow) override;
 	virtual void closeBrowser() override;
@@ -114,6 +115,7 @@ private:
 	std::mutex m;
 	std::condition_variable cv;
 	bool cefReady = false;
+	std::string preLoadScript = "";
 
 	void createBrowser();
 	void resizeBrowser(QResizeEvent *event = nullptr);
