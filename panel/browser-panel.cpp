@@ -548,6 +548,11 @@ void QCefWidgetInternal::reloadPage()
 		cefBrowser->ReloadIgnoreCache();
 }
 
+const std::string QCefWidgetInternal::getPreLoadScript()
+{
+	return preLoadScript;
+}
+
 void QCefWidgetInternal::setPreLoadScript(const std::string &script)
 {
 	preLoadScript = script;
