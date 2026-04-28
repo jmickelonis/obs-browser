@@ -381,13 +381,19 @@ void QCefBrowserClient::OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> fra
 	if (!frame->IsMain())
 		return;
 
-	std::string encodedURL = CefURIEncode(frame->GetURL(), false).ToString();
 	std::string script = "window.close = () => "
-			     "console.log('OBS browser docks cannot be closed using JavaScript.');"
-			     // Attach the url to the body element, so CSS can query it (data-url attribute)
-			     "{var body = document.querySelector('body');"
-			     "if (body) body.dataset.url = decodeURIComponent('" +
-			     encodedURL + "');}";
+			     "console.log('OBS browser docks cannot be closed using JavaScript.');";
+
+	// Attach the url path to the body element, so CSS can query it (data-path attribute)
+	std::string encodedURL = CefURIEncode(frame->GetURL(), false).ToString();
+	script += std::format("var encodedURL = '{}';", encodedURL);
+	script += R"(
+		var body = document.querySelector('body');
+		if (body) {
+			var url = new URL(decodeURIComponent(encodedURL));
+			body.dataset.path = url.pathname;
+		}
+	)";
 
 	if (widget && !widget->script.empty())
 		script += widget->script;
