@@ -280,8 +280,8 @@ void QCefWidgetInternal::closeBrowser()
 	if (container)
 		container->setVisible(false);
 
-	if (window)
-		window->setVisible(false);
+	if (nativeWindow)
+		nativeWindow->setVisible(false);
 
 	QueueCEFTask([this]() {
 		CefRefPtr<CefBrowserHost> host = cefBrowser->GetHost();
@@ -329,9 +329,9 @@ void QCefWidgetInternal::closeBrowser()
 		container = nullptr;
 	}
 
-	if (window) {
-		delete window;
-		window = nullptr;
+	if (nativeWindow) {
+		delete nativeWindow;
+		nativeWindow = nullptr;
 	}
 
 	state = State::Initial;
@@ -447,12 +447,24 @@ void QCefWidgetInternal::createBrowser()
 #endif
 
 		QTimer::singleShot(0, this, [this, windowHandle]() {
-			if (window)
+			if (nativeWindow)
 				return;
 
-			window = QWindow::fromWinId((WId)windowHandle);
+#ifdef _WIN32
+			// Set the parent window to fix focus issues
+			SetParent(windowHandle, (HWND)this->window()->winId());
+#if CEF_USE_VIEWS
+			// Disable the native frame
+			SetWindowLongPtrW(windowHandle, GWL_STYLE, WS_POPUP);
+			// Make the window background fully transparent
+			LONG exStyle = GetWindowLongW(windowHandle, GWL_EXSTYLE);
+			SetWindowLongW(windowHandle, GWL_EXSTYLE, exStyle | WS_EX_TRANSPARENT);
+#endif
+#endif
 
-			container = QWidget::createWindowContainer(window);
+			nativeWindow = QWindow::fromWinId((WId)windowHandle);
+
+			container = QWidget::createWindowContainer(nativeWindow);
 			container->setFocusPolicy(Qt::NoFocus);
 			container->setVisible(false);
 			QGridLayout *layout = static_cast<QGridLayout *>(this->layout());

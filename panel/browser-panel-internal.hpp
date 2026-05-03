@@ -104,7 +104,7 @@ public:
 private:
 	friend class QCefBrowserClient;
 
-	QPointer<QWindow> window;
+	QPointer<QWindow> nativeWindow;
 	QPointer<QWidget> container;
 #if CEF_USE_VIEWS
 	CefRefPtr<CefWindow> cefWindow;
