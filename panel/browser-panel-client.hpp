@@ -36,6 +36,9 @@ public:
 	/* CefDisplayHandler */
 	virtual void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString &title) override;
 
+	/* CefFocusHandler */
+	virtual void OnGotFocus(CefRefPtr<CefBrowser> browser) override;
+
 	/* CefRequestHandler */
 	virtual bool OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
 				    CefRefPtr<CefRequest> request, bool user_gesture, bool is_redirect) override;

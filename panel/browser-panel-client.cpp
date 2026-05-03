@@ -101,6 +101,14 @@ void QCefBrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefSt
 	}
 }
 
+/* CefFocusHandler */
+void QCefBrowserClient::OnGotFocus(CefRefPtr<CefBrowser> browser)
+{
+	if (widget && widget->state != QCefWidgetInternal::State::Closing)
+		// Raise the parent window when the browser gets focus
+		widget->window()->raise();
+}
+
 /* CefRequestHandler */
 bool QCefBrowserClient::OnBeforeBrowse(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame>,
 				       CefRefPtr<CefRequest> request, bool, bool)
