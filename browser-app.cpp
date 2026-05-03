@@ -131,10 +131,6 @@ void BrowserApp::OnBeforeCommandLineProcessing(const CefString &process_type, Ce
 		const char *s = getenv("OBS_BROWSER_ENABLE_GPU");
 		bool b = s ? QVariant(s).toBool() : true;
 		command_line->AppendSwitch(b ? "--enable-gpu" : "--disable-gpu");
-#ifdef _WIN32
-		if (b)
-			command_line->AppendSwitchWithValue("enable-features", "RawDraw");
-#endif
 	}
 
 	if (!shared_texture_available) {
