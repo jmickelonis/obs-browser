@@ -441,8 +441,17 @@ void QCefWidgetInternal::createBrowser()
 		// (otherwise floating panels might not have the correct initial size)
 		windowInfo.bounds = {-1, -1, 1, 1};
 
-		cefBrowser = CefBrowserHost::CreateBrowserSync(windowInfo, browserClient, url, browserSettings,
-							       CefRefPtr<CefDictionaryValue>(), rqc);
+		CefRefPtr<CefBrowser> browser = CefBrowserHost::CreateBrowserSync(
+			windowInfo, browserClient, url, browserSettings, CefRefPtr<CefDictionaryValue>(), rqc);
+
+		if (!browser) {
+			// Sometimes returns a nullptr right after CefInitialize
+			// Submit another task and try again
+			createBrowser();
+			return;
+		}
+
+		cefBrowser = browser;
 		windowHandle = cefBrowser->GetHost()->GetWindowHandle();
 #endif
 
