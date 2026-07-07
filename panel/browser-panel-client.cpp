@@ -102,7 +102,7 @@ void QCefBrowserClient::OnTitleChange(CefRefPtr<CefBrowser> browser, const CefSt
 }
 
 /* CefFocusHandler */
-void QCefBrowserClient::OnGotFocus(CefRefPtr<CefBrowser> browser)
+void QCefBrowserClient::OnGotFocus(CefRefPtr<CefBrowser> /*browser*/)
 {
 	if (widget && widget->state != QCefWidgetInternal::State::Closing)
 		// Raise the parent window when the browser gets focus
@@ -272,7 +272,7 @@ bool QCefBrowserClient::RunContextMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame
 {
 	std::vector<std::tuple<std::string, int, bool, int, bool>> menu_items;
 	menu_items.reserve(model->GetCount());
-	for (int i = 0; i < model->GetCount(); i++) {
+	for (unsigned int i = 0; i < model->GetCount(); i++) {
 		menu_items.push_back({model->GetLabelAt(i), model->GetCommandIdAt(i), model->IsEnabledAt(i),
 				      model->GetTypeAt(i), model->IsCheckedAt(i)});
 	}
@@ -371,8 +371,8 @@ bool QCefBrowserClient::OnContextMenuCommand(CefRefPtr<CefBrowser> browser, CefR
 	return false;
 }
 
-void QCefBrowserClient::OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame,
-				    TransitionType transition_type)
+void QCefBrowserClient::OnLoadStart(CefRefPtr<CefBrowser> /*browser*/, CefRefPtr<CefFrame> frame,
+				    TransitionType /*transition_type*/)
 {
 	if (!widget || !frame->IsMain())
 		return;

@@ -104,7 +104,8 @@ static float ParseEnvScale(const char *name, float defaultValue = 1.0)
 	return defaultValue;
 }
 
-void BrowserApp::OnBeforeCommandLineProcessing(const CefString &process_type, CefRefPtr<CefCommandLine> command_line)
+void BrowserApp::OnBeforeCommandLineProcessing(const CefString & /*process_type*/,
+					       CefRefPtr<CefCommandLine> command_line)
 {
 #ifdef _WIN32
 	// Windows handles per-monitor scaling by default
