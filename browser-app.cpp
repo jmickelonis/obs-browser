@@ -18,6 +18,8 @@
 
 #include <QApplication>
 #include <fstream>
+#include <ranges>
+#include <string_view>
 #include <util/platform.h>
 
 #include "browser-app.hpp"
@@ -104,6 +106,47 @@ static float ParseEnvScale(const char *name, float defaultValue = 1.0)
 	return defaultValue;
 }
 
+static std::set<string> SplitFeatures(const std::string &s)
+{
+	std::set<string> set;
+	if (s.empty())
+		return set;
+	for (const auto subrange : std::views::split(s, ",")) {
+		if (subrange.empty())
+			continue;
+		std::string_view sv = std::string_view(subrange.data(), subrange.size());
+		std::string s = static_cast<std::string>(sv);
+		set.insert(s);
+	}
+	return set;
+}
+
+static std::string JoinFeatures(const std::set<string> set)
+{
+	if (set.empty())
+		return "";
+	std::ostringstream out;
+	for (const std::string &s : set) {
+		if (out.tellp())
+			out << ",";
+		out << s;
+	}
+	return out.str();
+}
+
+static bool ShouldEnableVulkan()
+{
+	const char *s = getenv("OBS_BROWSER_ENABLE_VULKAN");
+	if (s)
+		return QVariant(s).toBool();
+#if defined(__linux__) && CHROME_VERSION_MAJOR >= 151
+	// Chrome 151+ crashes without Vulkan
+	return true;
+#else
+	return false;
+#endif
+}
+
 void BrowserApp::OnBeforeCommandLineProcessing(const CefString & /*process_type*/,
 					       CefRefPtr<CefCommandLine> command_line)
 {
@@ -151,22 +194,27 @@ void BrowserApp::OnBeforeCommandLineProcessing(const CefString & /*process_type*
 	// 		command_line->AppendSwitch("--in-process-gpu");
 	// }
 
-	if (command_line->HasSwitch("disable-features")) {
-		// Don't override existing, as this can break OSR
-		std::string disableFeatures = command_line->GetSwitchValue("disable-features");
-		disableFeatures += ",HardwareMediaKeyHandling";
-#ifdef _WIN32
-		disableFeatures += ",EnableWindowsGamingInputDataFetcher";
-#endif
-		disableFeatures += ",WebBluetooth";
-		command_line->AppendSwitchWithValue("disable-features", disableFeatures);
-	} else {
-		command_line->AppendSwitchWithValue("disable-features", "WebBluetooth,"
-#ifdef _WIN32
-									"EnableWindowsGamingInputDataFetcher,"
-#endif
-									"HardwareMediaKeyHandling");
+	// Gather existing enable-features and add to them
+	std::set<string> features = SplitFeatures(command_line->GetSwitchValue("enable-features"));
+	if (ShouldEnableVulkan()) {
+		features.insert("Vulkan");
+		features.insert("VulkanFromANGLE");
+		features.insert("DefaultANGLEVulkan");
 	}
+	if (!features.empty()) {
+		command_line->RemoveSwitch("enable-features");
+		command_line->AppendSwitchWithValue("enable-features", JoinFeatures(features));
+	}
+
+	// Gather existing disable-features and add to them
+	features = SplitFeatures(command_line->GetSwitchValue("disable-features"));
+	features.insert("HardwareMediaKeyHandling");
+	features.insert("WebBluetooth");
+#ifdef _WIN32
+	features.insert("EnableWindowsGamingInputDataFetcher");
+#endif
+	command_line->RemoveSwitch("disable-features");
+	command_line->AppendSwitchWithValue("disable-features", JoinFeatures(features));
 
 	command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
 #ifdef __APPLE__
