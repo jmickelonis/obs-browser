@@ -202,7 +202,9 @@ void BrowserApp::OnBeforeCommandLineProcessing(const CefString & /*process_type*
 		features.insert("DefaultANGLEVulkan");
 	}
 	if (!features.empty()) {
+#if CHROME_VERSION_MAJOR >= 141
 		command_line->RemoveSwitch("enable-features");
+#endif
 		command_line->AppendSwitchWithValue("enable-features", JoinFeatures(features));
 	}
 
@@ -213,7 +215,9 @@ void BrowserApp::OnBeforeCommandLineProcessing(const CefString & /*process_type*
 #ifdef _WIN32
 	features.insert("EnableWindowsGamingInputDataFetcher");
 #endif
+#if CHROME_VERSION_MAJOR >= 141
 	command_line->RemoveSwitch("disable-features");
+#endif
 	command_line->AppendSwitchWithValue("disable-features", JoinFeatures(features));
 
 	command_line->AppendSwitchWithValue("autoplay-policy", "no-user-gesture-required");
