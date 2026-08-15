@@ -134,19 +134,6 @@ static std::string JoinFeatures(const std::set<string> set)
 	return out.str();
 }
 
-static bool ShouldEnableVulkan()
-{
-	const char *s = getenv("OBS_BROWSER_ENABLE_VULKAN");
-	if (s)
-		return QVariant(s).toBool();
-#if defined(__linux__) && CHROME_VERSION_MAJOR >= 151
-	// Chrome 151+ crashes without Vulkan
-	return true;
-#else
-	return false;
-#endif
-}
-
 void BrowserApp::OnBeforeCommandLineProcessing(const CefString & /*process_type*/,
 					       CefRefPtr<CefCommandLine> command_line)
 {
@@ -196,11 +183,16 @@ void BrowserApp::OnBeforeCommandLineProcessing(const CefString & /*process_type*
 
 	// Gather existing enable-features and add to them
 	std::set<string> features = SplitFeatures(command_line->GetSwitchValue("enable-features"));
-	if (ShouldEnableVulkan()) {
+#ifdef __linux__
+	const char *env = getenv("OBS_BROWSER_ENABLE_VULKAN");
+	if (env ? QVariant(env).toBool() : CHROME_VERSION_MAJOR >= 151 && !wayland) {
+		// Chromium 151 breaks source hardware acceleration on Linux/X11.
+		// Use Vulkan by default there.
 		features.insert("Vulkan");
 		features.insert("VulkanFromANGLE");
 		features.insert("DefaultANGLEVulkan");
 	}
+#endif
 	if (!features.empty()) {
 #if CHROME_VERSION_MAJOR >= 141
 		command_line->RemoveSwitch("enable-features");
