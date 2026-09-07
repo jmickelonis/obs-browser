@@ -186,8 +186,10 @@ void BrowserApp::OnBeforeCommandLineProcessing(const CefString & /*process_type*
 #ifdef __linux__
 	const char *env = getenv("OBS_BROWSER_ENABLE_VULKAN");
 	if (env ? QVariant(env).toBool() : CHROME_VERSION_MAJOR >= 151 && !wayland) {
-		// Chromium 151 breaks source hardware acceleration on Linux/X11.
+		// Chromium 151 breaks OpenGL-based source hardware acceleration on Linux/X11.
 		// Use Vulkan by default there.
+		// This seems to be fixed in later versions,
+		// but Vulkan performs better anyway, so we'll keep this as the default.
 		features.insert("Vulkan");
 		features.insert("VulkanFromANGLE");
 		features.insert("DefaultANGLEVulkan");
